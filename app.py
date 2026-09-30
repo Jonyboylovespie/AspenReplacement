@@ -29,7 +29,7 @@ from sign_in import ExtensionSignIn, SignInManager
 from session_profiles import existing_profile, read_aspen_session
 
 ROOT = Path(__file__).resolve().parent
-REFRESH_SECONDS = 300
+REFRESH_SECONDS = 60
 
 
 class Store:

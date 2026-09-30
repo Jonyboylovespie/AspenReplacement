@@ -187,7 +187,7 @@ function setState(state) {
   $("account-status").textContent = state.account ? `Signed in as ${state.account.email}` : "";
   $("logout").hidden = !state.signedIn;
   $("status").textContent = state.syncing ? "Syncing from Aspen…" : demo ? "Showing sample data." :
-    state.error ? state.error : state.connected ? "Connected to Aspen. Automatically refreshes every 5 minutes." :
+    state.error ? state.error : state.connected ? "Connected to Aspen. Automatically refreshes every minute." :
     snapshot ? "Showing saved data. Connect Aspen to get updates." : "Aspen is not connected.";
   $("updated").textContent = snapshot?.syncedAt ? `${demo ? "Sample loaded" : "Last successful sync"}: ${new Date(snapshot.syncedAt).toLocaleString()}${!demo && state.stale ? " (saved data; may be out of date)" : ""}` : "";
   const signingIn = !!state.signIn?.active;
