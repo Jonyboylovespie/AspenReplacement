@@ -229,7 +229,7 @@ strong {
   height: 46px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid currentColor;
+  border: 0;
   font-family: var(--font-display);
   font-size: 1.2rem;
   letter-spacing: -0.08em;
@@ -1148,8 +1148,7 @@ body[data-design='passing-period'] .sidebar {
 
 body[data-design='passing-period'] .brand-mark {
   border: 0;
-  border-radius: 50%;
-  background: #16324a;
+  background: transparent;
   color: #ffffff;
 }
 
@@ -1398,7 +1397,7 @@ body[data-design='passing-period'][data-mode='dark'] .sidebar {
 }
 
 body[data-design='passing-period'][data-mode='dark'] .brand-mark {
-  background: #55c4c2;
+  background: transparent;
   color: #0d2231;
 }
 
