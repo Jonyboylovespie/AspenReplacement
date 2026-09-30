@@ -373,7 +373,7 @@ function classHref(course) {
 function renderClasses() {
   const snapshot = currentState.snapshot;
   const courses = classesWithGradesFirst(snapshot.classes || []);
-  $("home-title").textContent = snapshot.mode === "demo" ? "Your school day, at a glance." : "Welcome back.";
+  $("home-title").textContent = snapshot.mode === "demo" ? "Your school day, at a glance." : "Welcome back";
   $("class-total").textContent = `${courses.length} class${courses.length === 1 ? "" : "es"}`;
   if (!courses.some(course => course.studentScheduleOid === selectedClass)) selectedClass = courses[0]?.studentScheduleOid || "";
   $("class-select").replaceChildren();
