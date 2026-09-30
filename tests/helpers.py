@@ -13,7 +13,6 @@ def create_test_app(directory):
     # Production factories always use encrypted storage and ExtensionSignIn.
     store.cipher = None
     store.claim_student = None
-    store.account_email = None
     store.sign_in = SignInManager(store.directory / "browser", store.lock,
                                   store.verify_session, store.connect_session)
     app.extensions["aspen_store"] = store

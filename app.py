@@ -33,7 +33,7 @@ REFRESH_SECONDS = 300
 
 
 class Store:
-    def __init__(self, directory, cipher=None, claim_student=None, account_email=None, email_field=None):
+    def __init__(self, directory, cipher=None, claim_student=None):
         self.directory = Path(directory)
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.directory, 0o700)
@@ -48,8 +48,6 @@ class Store:
         self.last_attempt = None
         self.cipher = cipher
         self.claim_student = claim_student
-        self.account_email = account_email
-        self.email_field = email_field
         self.session_path = self.directory / "aspen-session.enc"
         self.sign_in = (ExtensionSignIn(self.lock) if cipher else
                         SignInManager(self.directory / "aspen-browser", self.lock,
@@ -84,23 +82,16 @@ class Store:
         client = AspenClient(jar)
         # Verify identity before replacing a session or showing another student's cache.
         user = client.api("/users/current")
+        if (not isinstance(user, dict) or not isinstance(user.get("personOid"), str)
+                or not user["personOid"].strip()):
+            raise AspenError("Aspen did not return a valid signed-in account. Sign into Aspen again.")
         student = client.api("/students/studentByPersonOid", {"personOid": user["personOid"]})
-        if not isinstance(student, dict) or not student.get("studentOid"):
+        if (not isinstance(student, dict) or not isinstance(student.get("studentOid"), str)
+                or not student["studentOid"].strip()):
             raise AspenError("Aspen did not return a valid student account.")
-        if self.account_email:
-            identity = user
-            if self.email_field:
-                identity = {"user": user, "student": student}
-                for key in self.email_field.split("."):
-                    identity = identity.get(key) if isinstance(identity, dict) else None
-                emails = [identity]
-            else:
-                emails = [user.get(key) for key in ("email", "emailAddress", "username", "userName", "loginName")]
-            emails = [value.strip().casefold() for value in emails if isinstance(value, str) and "@" in value]
-            if not emails:
-                raise AspenError("Aspen didn't provide a school email to verify this account. Configure BETTERASSPEN_ASPEN_EMAIL_FIELD to its verified identity field.")
-            if self.account_email.casefold() not in emails:
-                raise AspenError("Sign into Aspen with the same school Google account you used for BetterASSpen.")
+        # Possession of an authenticated Aspen session establishes access. The
+        # first successful connection binds this student to the Google subject;
+        # Google and school email addresses do not need to match.
         return client, student
 
     def connect_session(self, client, student):
@@ -287,12 +278,7 @@ def create_app(directory=None, config=None):
 
     def account_store(subject):
         def make_store():
-            from contextlib import closing
-            with closing(accounts.connect()) as db:
-                account = db.execute("SELECT email FROM accounts WHERE subject=?", (subject,)).fetchone()
             return Store(accounts.account_directory(subject), cipher=cipher,
-                         account_email=account[0],
-                         email_field=os.environ.get("BETTERASSPEN_ASPEN_EMAIL_FIELD"),
                          claim_student=lambda oid: accounts.claim_student(subject, oid))
         return runtime.add(subject, make_store)
 

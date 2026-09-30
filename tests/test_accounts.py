@@ -33,9 +33,9 @@ class AccountTests(unittest.TestCase):
         self.app.extensions["refresh_runtime"].stop()
         self.directory.cleanup()
 
-    def login(self, subject="alice"):
+    def login(self, subject="alice", email=None):
         client = self.app.test_client()
-        token = self.accounts.login({"sub": subject, "email": subject + "@school.example",
+        token = self.accounts.login({"sub": subject, "email": email or subject + "@school.example",
                                      "email_verified": True, "name": subject})
         with client.session_transaction() as state:
             state["login"] = token
@@ -101,12 +101,13 @@ class AccountTests(unittest.TestCase):
         self.assertFalse(client.get('/api/state').json['signedIn'])
         self.assertEqual(client.post('/api/refresh').status_code, 401)
 
-    def test_extension_connection_requires_current_attempt_and_matching_identity(self):
+    def test_extension_connection_requires_current_attempt_and_authenticated_aspen(self):
         client, store, headers = self.login()
         self.assertEqual(client.post('/api/session', json={'cookies': COOKIES}, headers=headers).status_code, 409)
         state = client.post('/api/sign-in', headers=headers).json
         body = {'cookies': COOKIES, 'connectionAttempt': state['signIn']['attempt']}
-        with patch('app.AspenClient', return_value=self.aspen_client(email='bob@school.example')):
+        with patch('app.AspenClient') as factory:
+            factory.return_value.api.side_effect = AspenError('Aspen session expired.')
             self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 401)
         self.assertIsNone(store.client)
         self.assertFalse(store.session_path.exists())
@@ -116,11 +117,73 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 409)
         self.assertNotIn('private-aspen-session', json.dumps(client.get('/api/state').json))
 
-    def test_absent_aspen_identity_fails_closed(self):
+    def test_invalid_aspen_account_or_student_cannot_create_binding(self):
         _, store, _ = self.login()
-        fixture = self.aspen_client(email=None)
-        with patch('app.AspenClient', return_value=fixture), self.assertRaises(AspenError):
-            store.verify_session(COOKIES)
+        for user in (None, [], {}, {'personOid': ''}, {'personOid': 5}, {'personOid': ' '}):
+            with self.subTest(user=user), patch('app.AspenClient') as factory:
+                factory.return_value.api.return_value = user
+                with self.assertRaises(AspenError):
+                    store.verify_session(COOKIES)
+                factory.return_value.api.assert_called_once_with('/users/current')
+        for student in (None, {}, {'studentOid': ''}, {'studentOid': 5}, {'studentOid': ' '}):
+            with self.subTest(student=student), patch('app.AspenClient') as factory:
+                factory.return_value.api.side_effect = [{'personOid': 'person'}, student]
+                with self.assertRaises(AspenError):
+                    store.verify_session(COOKIES)
+        self.assertFalse(store.session_path.exists())
+
+    def test_any_google_account_can_pair_with_authenticated_aspen_on_first_connection(self):
+        client, store, headers = self.login('personal', email='personal@example.com')
+        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
+        body = {'cookies': COOKIES, 'connectionAttempt': attempt}
+        with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
+            self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 202)
+        self.assertTrue(store.session_path.exists())
+        with client.session_transaction() as state:
+            self.assertEqual(self.accounts.account(state['login'])['student_oid'], 'alice-student')
+        other, _, other_headers = self.login('alice')
+        other_attempt = other.post('/api/sign-in', headers=other_headers).json['signIn']['attempt']
+        with patch('app.AspenClient', return_value=self.aspen_client()):
+            self.assertEqual(other.post('/api/session', json={**body, 'connectionAttempt': other_attempt}, headers=other_headers).status_code, 409)
+
+    def test_aspen_email_is_not_required_for_first_pairing(self):
+        _, store, _ = self.login('unlisted', email='unlisted@example.com')
+        with patch('app.AspenClient', return_value=self.aspen_client(email=None)), patch.object(store, 'start_refresh'):
+            client, student = store.verify_session(COOKIES)
+            store.connect_session(client, student)
+        self.assertTrue(store.session_path.exists())
+
+    def test_linked_personal_account_session_restores_after_restart(self):
+        client, store, headers = self.login('personal', email='personal@example.com')
+        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
+        with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
+            self.assertEqual(client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': attempt}, headers=headers).status_code, 202)
+        restarted = create_app(self.directory.name, self.config)
+        try:
+            fresh_store = restarted.extensions['account_store']('personal')
+            with patch('app.AspenClient', return_value=self.aspen_client()):
+                self.assertTrue(fresh_store.resume_session(refresh=False))
+            fresh_client = restarted.test_client()
+            fresh_client.set_cookie('betterasspen_session', client.get_cookie('betterasspen_session').value)
+            self.assertTrue(fresh_client.get('/api/state').json['connected'])
+        finally:
+            restarted.extensions['refresh_runtime'].stop()
+
+    def test_disconnect_and_clear_do_not_allow_switching_students(self):
+        client, store, headers = self.login('personal', email='personal@example.com')
+        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
+        with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
+            self.assertEqual(client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': attempt}, headers=headers).status_code, 202)
+        for action in ('/api/disconnect', '/api/clear'):
+            with self.subTest(action=action):
+                self.assertEqual(client.post(action, headers=headers).status_code, 200)
+                attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
+                body = {'cookies': COOKIES, 'connectionAttempt': attempt}
+                with patch('app.AspenClient', return_value=self.aspen_client(student='another-student')):
+                    self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 409)
+                self.assertFalse(store.session_path.exists())
+                with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
+                    self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 202)
 
     def test_student_binding_cannot_be_taken_by_another_google_account(self):
         self.login('alice')
@@ -130,6 +193,27 @@ class AccountTests(unittest.TestCase):
             self.accounts.claim_student('bob', 'student-one')
         with self.assertRaises(ValueError):
             self.accounts.claim_student('alice', 'student-two')
+
+    def test_simultaneous_first_connections_cannot_claim_the_same_student(self):
+        self.login('alice')
+        self.login('bob')
+        barrier = threading.Barrier(2)
+        results = []
+        def claim(subject):
+            barrier.wait(timeout=2)
+            try:
+                self.accounts.claim_student(subject, 'shared-student')
+            except ValueError:
+                results.append(False)
+            else:
+                results.append(True)
+        threads = [threading.Thread(target=claim, args=(subject,)) for subject in ('alice', 'bob')]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(sorted(results), [False, True])
 
     def test_sync_cannot_publish_another_students_records(self):
         client, store, _ = self.login()

@@ -84,11 +84,13 @@ class AccountDatabase:
 
     def claim_student(self, subject, student_oid):
         """Bind an Aspen student to one Google account; never silently switch it."""
+        if not isinstance(student_oid, str) or not student_oid.strip():
+            raise ValueError("Aspen did not return a valid student account.")
         with closing(self.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT student_oid FROM accounts WHERE subject=?", (subject,)).fetchone()
             if not row or row[0] not in (None, student_oid):
-                raise ValueError("This Aspen session belongs to a different student. Use the school account connected to BetterASSpen.")
+                raise ValueError("This Google account is already paired with a different Aspen student. Sign into Aspen with the student you connected first.")
             try:
                 db.execute("UPDATE accounts SET student_oid=? WHERE subject=?", (student_oid, subject))
             except sqlite3.IntegrityError:

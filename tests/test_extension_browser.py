@@ -30,7 +30,7 @@ class ExtensionBrowserTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             app = create_app(Path(directory) / 'state', {'TESTING': True, 'START_REFRESH': False, 'GOOGLE_CLIENT_ID': 'fixture', 'GOOGLE_CLIENT_SECRET': 'fixture'})
             def fixture_google_login():
-                token = app.extensions['accounts'].login({'sub': 'alice', 'email': 'alice@school.example',
+                token = app.extensions['accounts'].login({'sub': 'alice', 'email': 'alice@personal.example',
                                                         'name': 'Alice', 'email_verified': True})
                 session.clear()
                 session['login'] = token
@@ -45,7 +45,7 @@ class ExtensionBrowserTests(unittest.TestCase):
                     self.session.cookies = cookies
                 def api(self, path, params=None):
                     if path == '/users/current':
-                        return {'personOid': 'alice-person', 'email': 'alice@school.example'}
+                        return {'personOid': 'alice-person'}
                     return {'studentOid': 'alice-student'}
                 def sync(self):
                     return snapshot
