@@ -16,6 +16,7 @@ from flask import Flask, g, jsonify, redirect, request, send_from_directory, ses
 from authlib.integrations.flask_client import OAuth
 from authlib.integrations.base_client.errors import OAuthError
 from cryptography.fernet import Fernet, InvalidToken
+from dotenv import load_dotenv
 from joserfc.errors import JoseError
 from werkzeug.local import LocalProxy
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -240,6 +241,8 @@ class Store:
 
 
 def create_app(directory=None, config=None):
+    if not (config and config.get("TESTING")):
+        load_dotenv(ROOT / ".env", override=False, interpolate=False)
     app = Flask(__name__, static_folder=None)
     public_url = os.environ.get("BETTERASSPEN_PUBLIC_URL", "").rstrip("/")
     app.config.update(

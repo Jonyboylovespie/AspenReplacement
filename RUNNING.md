@@ -11,10 +11,15 @@ starts automatically, including after a worker restart. No systemd service is
 included.
 
 Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `BETTERASSPEN_PUBLIC_URL` in
-the server environment. Create a Google OAuth **web application** client with
+the repository's `.env` or the server environment. Gunicorn and the app load
+`.env` automatically; explicitly exported environment variables take priority.
+Create a Google OAuth **web application** client with
 `BETTERASSPEN_PUBLIC_URL/auth/google/callback` as an authorized redirect URI.
-Use the actual HTTPS address you will visit. The server does not automatically
-load `.env`; `.env.example` lists the settings. If your Google consent screen is
+Use the actual HTTPS address you will visit. `.env.example` lists the settings.
+For this instance, register
+`https://aspen.jonyserver.ddnsfree.com/auth/google/callback` as the redirect URI
+and `https://aspen.jonyserver.ddnsfree.com` as the JavaScript origin.
+If your Google consent screen is
 in testing mode, add the school Google accounts as test users.
 
 If HTTPS terminates at one trusted proxy, set `BETTERASSPEN_PROXY_HOPS=1` and

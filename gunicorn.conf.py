@@ -1,5 +1,9 @@
 """Run: .venv/bin/gunicorn -c gunicorn.conf.py 'app:create_app()'"""
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env", override=False, interpolate=False)
 
 bind = os.environ.get("BETTERASSPEN_BIND", "0.0.0.0:5173")
 # Account stores and the refresh coordinator live in this single process.
