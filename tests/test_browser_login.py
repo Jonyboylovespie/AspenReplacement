@@ -16,7 +16,7 @@ from werkzeug.serving import make_server
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aspen import AuthenticationRequired
 from aspen import demo_snapshot
-from app import create_app
+from helpers import create_test_app as create_app
 from sign_in import BrowserLogin, SignInError, browser_executable
 from browsers import BrowserChoice
 from session_profiles import ExistingBrowserLogin
@@ -109,54 +109,6 @@ class BrowserLoginTests(unittest.TestCase):
             threading.Event(), lambda phase, message: None, verify)
         self.assertEqual(result, ("verified", {"studentOid": "fixture-student"}))
 
-    def test_dashboard_button_captures_session_and_syncs_without_cookie_input(self):
-        from playwright.sync_api import sync_playwright
-        from sign_in import browser_executable
-        captured = threading.Event()
-        release = threading.Event()
-        snapshot = demo_snapshot()
-        snapshot["mode"] = "live"
-        snapshot["student"]["studentOid"] = "fixture-student"
-        class FixtureClient:
-            def sync(self):
-                return snapshot
-        def verify(raw):
-            self.assertEqual(sum(cookie["name"] == "JSESSIONID" for cookie in json.loads(raw)), 2)
-            captured.set()
-            if not release.wait(8):
-                raise SignInError("The test did not release the sign-in result.")
-            return FixtureClient(), snapshot["student"]
-        self.existing_session_profile = Path(self.directory.name) / "existing-profile"
-        self.store.sign_in.driver = ExistingBrowserLogin(profile=self.existing_session_profile, timeout=12)
-        self.store.sign_in.verify = verify
-        executable = browser_executable()
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(executable_path=executable, headless=True)
-            page = browser.new_page()
-            errors = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            try:
-                page.goto(self.origin)
-                page.get_by_role("button", name="Open Aspen connection settings").click()
-                self.assertEqual(page.locator("#cookie-text").count(), 0)
-                with page.context.expect_page(timeout=5000) as popup_event:
-                    page.get_by_role("link", name="Sign in with Google", exact=True).click()
-                popup = popup_event.value
-                popup.wait_for_load_state()
-                self.assertTrue(popup.url.startswith(self.origin))
-                page.locator("#sign-in-progress").wait_for(state="visible", timeout=5000)
-                self.assertTrue(captured.wait(5))
-                self.assertFalse(page.locator("#google-sign-in").is_enabled())
-                release.set()
-                page.locator("#connection-dialog").wait_for(state="hidden", timeout=8000)
-                page.locator("#dashboard").wait_for(state="visible", timeout=3000)
-                self.assertEqual(page.locator("#data-label").inner_text(), "Connected")
-                self.assertTrue(self.store.view()["connected"])
-                self.assertEqual(self.store.view()["signIn"]["phase"], "connected")
-                self.assertEqual(errors, [])
-            finally:
-                release.set()
-                browser.close()
 
 
 if __name__ == "__main__":

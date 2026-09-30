@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import secrets
 import signal
 import socket
 import subprocess
@@ -23,6 +24,51 @@ SIGN_IN_URL = ORIGIN + "/aspen-login/?" + urlencode({
 })
 SIGN_IN_TIMEOUT = 600
 ACTIVE_PHASES = {"starting", "waiting", "connecting", "cancelling"}
+
+
+class ExtensionSignIn:
+    """Track a remote browser connection without reading server browser profiles."""
+
+    def __init__(self, lock):
+        self.lock = lock
+        self.cancelled = threading.Event()
+        self.thread = None
+        self.phase = "idle"
+        self.error = None
+        self.deadline = 0
+        self.attempt = None
+
+    def view(self):
+        with self.lock:
+            if self.phase == "waiting" and time.monotonic() > self.deadline:
+                self.phase = "error"
+                self.error = "Aspen connection timed out. Try connecting again."
+            return {"phase": self.phase, "active": self.phase in ACTIVE_PHASES,
+                    "attempt": self.attempt if self.phase == "waiting" else None,
+                    "error": self.error, "url": SIGN_IN_URL,
+                    "message": "Finish school sign-in in the Aspen tab." if self.phase == "waiting" else ""}
+
+    def start(self):
+        with self.lock:
+            if self.view()["active"]:
+                return False
+            self.cancelled = threading.Event()
+            self.phase = "waiting"
+            self.attempt = secrets.token_urlsafe(24)
+            self.error = None
+            self.deadline = time.monotonic() + SIGN_IN_TIMEOUT
+            return True
+
+    def cancel(self):
+        with self.lock:
+            self.cancelled.set()
+            self.phase = "idle"
+            self.error = None
+
+    def connected(self):
+        with self.lock:
+            self.phase = "connected"
+            self.error = None
 
 
 class SignInError(Exception):

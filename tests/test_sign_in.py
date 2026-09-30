@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app import create_app
+from helpers import create_test_app as create_app
 from aspen import AuthenticationRequired, demo_snapshot
 from sign_in import ORIGIN, SignInError, capture_session
 

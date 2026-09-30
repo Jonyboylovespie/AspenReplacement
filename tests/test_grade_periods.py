@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import requests
 
-from app import Store, create_app
+from app import Store
+from helpers import create_test_app as create_app
 from aspen import AspenClient, AspenError, demo_snapshot
 
 

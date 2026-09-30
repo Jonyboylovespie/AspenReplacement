@@ -9,6 +9,12 @@ let busy = false;
 let feedLimit = 12;
 let selectedGradePeriod = null;
 let gradePeriodOwner = "";
+let connector = null;
+let automaticAccount = "";
+let capturing = false;
+let attemptedCookies = "";
+let openedAspen = false;
+let forcedAspen = false;
 
 function gradePeriodStorageKey() {
   return `aspen-grade-period:${gradePeriodOwner}`;
@@ -170,6 +176,11 @@ function setState(state) {
   currentState = {...state, snapshot: gradePeriodSnapshot(state.snapshot)};
   const snapshot = currentState.snapshot;
   const demo = snapshot?.mode === "demo";
+  const signedIn = state.signedIn !== false;
+  $("account-status").textContent = state.account ? `Signed in as ${state.account.email}` : "";
+  $("logout").hidden = !state.signedIn;
+  $("sign-in-caption").textContent = state.signedIn ? "Your Aspen login is saved securely for this Google account. Reconnect if Aspen expires it." : "Sign in with Google to see only your own grades.";
+  $("extension-status").textContent = connector?.ready ? "BetterASSpen Connect is ready." : "Install BetterASSpen Connect in this browser and set its address once to connect Aspen automatically.";
   $("status").textContent = state.syncing ? "Syncing from Aspen…" : demo ? "Showing sample data." :
     state.error ? state.error : state.connected ? "Connected to Aspen. Automatically refreshes every 5 minutes." :
     snapshot ? "Showing saved data. Connect Aspen to get updates." : "Aspen is not connected.";
@@ -189,10 +200,10 @@ function setState(state) {
   $("home-grade-period").textContent = gradePeriodLabel(filters);
   $("refresh").disabled = disabled || signingIn || !state.connected;
   $("disconnect").disabled = disabled || (!state.connected && !signingIn);
-  for (const id of ["clear", "demo", "empty-demo"]) $(id).disabled = disabled;
+  for (const id of ["clear", "demo", "empty-demo"]) $(id).disabled = disabled || !signedIn;
   $("google-sign-in").setAttribute("aria-disabled", String(disabled || signingIn));
-  $("google-sign-in").href = state.signIn?.url || $("google-sign-in").href;
-  $("google-sign-in-label").textContent = signingIn ? "Sign-in in progress…" : state.connected ? "Reconnect with Google" : "Sign in with Google";
+  $("google-sign-in").href = state.signedIn ? "#connect-aspen" : "/auth/google";
+  $("google-sign-in-label").textContent = !state.signedIn ? "Sign in with Google" : signingIn ? "Connecting Aspen…" : "Connect Aspen";
   $("sign-in-progress").hidden = !signingIn;
   $("sign-in-message").textContent = state.signIn?.message || "";
   $("cancel-sign-in").disabled = busy || state.signIn?.phase === "cancelling";
@@ -210,7 +221,7 @@ function setState(state) {
   $("notice-title").textContent = `${snapshot?.warnings?.length || 0} data note${snapshot?.warnings?.length === 1 ? "" : "s"}`;
   $("data-label").textContent = demo ? "Sample data" : state.syncing ? "Syncing…" : snapshot ? (state.stale ? "Saved data" : "Connected") : "Not connected";
   $("sync-heading").textContent = signingIn ? "Connecting to Aspen…" : demo ? "You’re exploring sample data" :
-    state.syncing ? "Syncing with Aspen…" : !snapshot ? "Aspen is not connected" :
+    state.syncing ? "Syncing with Aspen…" : !state.signedIn ? "Sign in to see your school day" : !snapshot ? "Aspen is not connected" :
     state.stale ? "Showing your saved snapshot" : "Synced with Aspen";
   $("empty").hidden = !!snapshot;
   $("dashboard").hidden = !snapshot;
@@ -227,6 +238,10 @@ function setState(state) {
   }
   $("grade-year").value = filters.year;
   $("grade-quarter").value = filters.quarter;
+  if (state.signedIn && connector?.ready && state.needsAuth && !state.syncing && !signingIn && automaticAccount !== state.account.email) {
+    automaticAccount = state.account.email;
+    queueMicrotask(() => beginAspenConnection());
+  }
 }
 
 function featureStatus(data) {
@@ -489,8 +504,21 @@ $("google-sign-in").addEventListener("click", (event) => {
     event.preventDefault();
     return;
   }
-  // Keep the native link navigation: the current browser opens its own new tab.
-  action("/api/sign-in");
+  if (!currentState?.signedIn && !currentState?.googleConfigured) {
+    event.preventDefault();
+    showError("Google sign-in hasn't been configured on this server yet.");
+    return;
+  }
+  if (currentState?.signedIn) {
+    event.preventDefault();
+    beginAspenConnection();
+  }
+});
+$("logout").addEventListener("click", async () => {
+  try {
+    await api("/auth/logout", {});
+    location.assign("/");
+  } catch (error) { showError(error.message); }
 });
 $("cancel-sign-in").addEventListener("click", () => action("/api/sign-in/cancel"));
 $("refresh").addEventListener("click", () => action("/api/refresh"));
@@ -590,8 +618,63 @@ window.addEventListener("hashchange", () => route(true));
 route();
 
 async function poll() {
-  try { if (!busy) setState(await api("/api/state")); }
-  catch (error) { showError(`The local server is unavailable: ${error.message}`); }
+  try {
+    if (!busy) setState(await api("/api/state"));
+    if (currentState?.signIn?.active && connector?.ready && !busy) captureAspen();
+  }
+  catch (error) { showError(`The server is unavailable: ${error.message}`); }
   setTimeout(poll, currentState?.syncing || currentState?.signIn?.active ? 1000 : 5000);
+}
+
+async function beginAspenConnection() {
+  if (!connector?.ready) {
+    $("connection-dialog").showModal();
+    showError("Install BetterASSpen Connect and set its address once, then reload this page.");
+    return;
+  }
+  if (busy || currentState?.syncing || currentState?.signIn?.active) return;
+  attemptedCookies = "";
+  openedAspen = false;
+  forcedAspen = false;
+  if (await action("/api/sign-in")) captureAspen();
+}
+
+async function captureAspen() {
+  if (capturing || !currentState?.signIn?.active) return;
+  const attempt = currentState.signIn.attempt;
+  capturing = true;
+  try {
+    const result = await connector.capture({open: !openedAspen});
+    openedAspen = true;
+    if (currentState?.signIn?.attempt !== attempt || !currentState?.signIn?.active) return;
+    if (result.error) throw new Error(result.error);
+    if (!result.cookies) return;
+    const fingerprint = JSON.stringify(result.cookies);
+    if (fingerprint === attemptedCookies) return;
+    attemptedCookies = fingerprint;
+    try {
+      setState(await api("/api/session", {cookies: fingerprint, connectionAttempt: attempt}));
+      attemptedCookies = "";
+      showError("");
+    } catch (error) {
+      // Existing Aspen cookies can precede completion of school Google SSO.
+      // Open school sign-in once, then wait for a changed session.
+      if (!openedAspen || !currentState?.signIn?.active) throw error;
+      if (!forcedAspen) {
+        forcedAspen = true;
+        await connector.capture({open: true, force: true});
+      }
+      showError(error.message);
+    }
+  } catch (error) { showError(error.message); }
+  finally { capturing = false; }
+}
+
+connector = new AspenConnector(() => {
+  if (currentState) setState(currentState);
+});
+if (new URLSearchParams(location.search).get("login") === "failed") {
+  $("connection-dialog").showModal();
+  showError("Google sign-in couldn't finish. Try signing in again.");
 }
 poll();

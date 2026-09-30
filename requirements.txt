@@ -4,3 +4,6 @@ beautifulsoup4>=4.13,<5
 playwright>=1.58,<2
 websockets>=15,<17
 lz4>=4.4,<5
+gunicorn>=23,<24
+Authlib>=1.6,<2
+cryptography>=45,<49

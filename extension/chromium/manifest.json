@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "BetterASSpen Connect",
+  "version": "0.1.0",
+  "description": "Connect your school Aspen session to your own BetterASSpen account automatically.",
+  "permissions": ["cookies", "storage", "scripting"],
+  "host_permissions": ["https://aspen.darienps.org/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {"service_worker": "background.js"},
+  "options_page": "options.html",
+  "action": {"default_title": "Configure BetterASSpen Connect"}
+}

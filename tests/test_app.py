@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app import Store, create_app
+from app import Store
+from helpers import create_test_app as create_app
 from aspen import (AspenError, AuthenticationRequired, AspenClient, form_fields, parse_cookies,
                    read_activity, read_attendance, read_average_summary, read_class_list)
 
@@ -161,6 +162,7 @@ class StateTests(unittest.TestCase):
             self.assertEqual(client.post("/api/demo").status_code, 403)
             token = client.get("/api/state").json["csrfToken"]
             self.assertEqual(client.post("/api/demo", headers={"X-CSRF-Token": token, "Origin": "https://evil.example"}).status_code, 403)
+            app.config["PUBLIC_URL"] = "http://localhost"
             self.assertEqual(client.get("/api/state", headers={"Host": "evil.example"}).status_code, 403)
             response = client.post("/api/demo", headers={"X-CSRF-Token": token})
             self.assertEqual(response.status_code, 200)
