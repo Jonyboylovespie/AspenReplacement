@@ -13,6 +13,20 @@ vm.runInContext(source.slice(0, source.indexOf("function setState(")), context);
 const display = context.classGradeDisplay;
 const gradeClass = context.letterGradeClass;
 
+test("assignment grades show score divided by possible as a percentage", () => {
+  const grade = context.assignmentGradeDisplay;
+  assert.equal(grade("10", "10.00"), "100%");
+  assert.equal(grade("18", "20.00"), "90%");
+  assert.equal(grade("9.5", "10.00"), "95%");
+  assert.equal(grade("2.5", "3"), "83.3%");
+  assert.equal(grade(0, 10), "0%");
+  assert.equal(grade(11, 10), "110%");
+  for (const [score, possible] of [["—", 10], ["EX", 10], ["", 10], [null, 10],
+    [undefined, 10], [10, null], [10, ""], [10, 0], [10, -1]]) {
+    assert.equal(grade(score, possible), "—");
+  }
+});
+
 test("activity colors follow assignment grades and explicit attendance status", () => {
   const color = context.activityColorClass;
   assert.equal(color({type: "grade"}, "100% A"), "grade-a");

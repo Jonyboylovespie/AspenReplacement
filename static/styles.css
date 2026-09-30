@@ -413,6 +413,15 @@ main {
   margin-bottom: 32px;
 }
 
+.page-heading > div:first-child,
+.mini-course > div,
+.course-card > *,
+.sync-note > div,
+.dialog-heading h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .page-heading p {
   max-width: 60ch;
   margin-top: 12px;
@@ -784,6 +793,7 @@ main {
 
 .course-bottom {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 14px;
@@ -855,6 +865,10 @@ main {
 
 .table-scroll {
   overflow: auto;
+}
+
+.mobile-table-hint {
+  display: none;
 }
 
 table {
@@ -1041,6 +1055,7 @@ dialog::backdrop {
 
 dialog p {
   margin: 14px 0;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 0.78rem;
 }
@@ -1610,6 +1625,7 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
 
   body[data-design='passing-period'] .sidebar nav a {
     justify-content: center;
+    min-height: 44px;
     padding: 6px 4px;
     font-size: 0.68rem;
   }
@@ -1622,6 +1638,7 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
 
 
   .topbar {
+    width: calc(100% - 28px);
     max-width: calc(100% - 28px);
     margin: 14px 14px 0 auto;
     padding: 14px 12px 10px;
@@ -1630,6 +1647,22 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
 
   .topbar-controls {
     gap: 4px;
+  }
+
+  button,
+  .quiet-button,
+  .mode-toggle,
+  input,
+  select {
+    min-height: 44px;
+  }
+
+  /* Keep form controls readable without focus zoom on mobile Safari. */
+  input,
+  select,
+  .search-field input,
+  .filter-row select {
+    font-size: 16px;
   }
 
   .page-content {
@@ -1691,10 +1724,31 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
 
   .event-values {
     grid-column: 2 / -1;
+    flex-wrap: wrap;
   }
 
   .section-heading {
+    flex-wrap: wrap;
+    gap: 8px 18px;
     padding: 19px 15px 16px;
+  }
+
+  .section-heading > h2 {
+    flex: 1 1 180px;
+  }
+
+  .term-label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    white-space: normal;
+  }
+
+  .mobile-table-hint {
+    display: block;
+    padding: 0 15px 12px;
+    color: var(--muted);
+    font-size: 0.75rem;
   }
 
   .source-note,
@@ -1759,7 +1813,13 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
 
   .detail-heading {
     display: flex;
-    align-items: flex-end;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+  }
+
+  .detail-grade {
+    text-align: left;
   }
 
   .detail-heading h1 {

@@ -139,6 +139,13 @@ function activityGradeDisplay(score) {
   return `${Number(percentage.toFixed(1))}% ${letter}`;
 }
 
+function assignmentGradeDisplay(score, possible) {
+  const values = [score, possible].map(value => String(value ?? "").trim());
+  if (!values.every(value => /^\d+(?:\.\d+)?$/.test(value)) || Number(values[1]) <= 0) return "—";
+  const percentage = Number(values[0]) / Number(values[1]) * 100;
+  return Number.isFinite(percentage) ? `${Number(percentage.toFixed(1))}%` : "—";
+}
+
 function activityColorClass(item, grade) {
   if (item.type === "grade") return letterGradeClass(grade);
   if (item.absent === true || item.tardy === true) {
@@ -467,7 +474,7 @@ function renderAssignments() {
   for (const item of assignments) {
     const score = scoreDisplay(item);
     const row = element("tr");
-    for (const value of [item.name, item.termName, item.categoryName, formatDate(item.assignedDate), formatDate(item.dueDate), score.score, item.totalPoints ?? "—", score.status]) row.append(element("td", value));
+    for (const value of [item.name, item.termName, item.categoryName, formatDate(item.assignedDate), formatDate(item.dueDate), score.score, item.totalPoints ?? "—", assignmentGradeDisplay(score.score, item.totalPoints), score.status]) row.append(element("td", value));
     const cell = element("td");
     if (item.description) {
       const details = element("details");
