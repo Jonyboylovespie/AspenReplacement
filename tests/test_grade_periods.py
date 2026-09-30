@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -99,6 +100,51 @@ class GradePeriodTests(unittest.TestCase):
             self.assertEqual(client.post("/api/grades", json={"year": "current", "quarter": "current"}, headers=headers).status_code, 401)
             store.syncing = True
             self.assertEqual(client.post("/api/grades", json={"year": "current", "quarter": "current"}, headers=headers).status_code, 409)
+
+    def test_live_switch_keeps_old_snapshot_until_sync_completes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(directory)
+            store = app.extensions["aspen_store"]
+            saved = demo_snapshot()
+            saved["mode"] = "live"
+            store.save(saved)
+            requested = threading.Event()
+            finish = threading.Event()
+            published = threading.Event()
+
+            def sync(year, quarter):
+                self.assertEqual((year, quarter), ("previous", "all"))
+                requested.set()
+                if not finish.wait(2):
+                    raise AspenError("Test sync timed out.")
+                snapshot = demo_snapshot(year, quarter)
+                snapshot["mode"] = "live"
+                return snapshot
+
+            client = unittest.mock.Mock()
+            client.sync.side_effect = sync
+            store.client = client
+            store.needs_auth = False
+            original_save = store.save
+
+            def save(snapshot):
+                original_save(snapshot)
+                published.set()
+
+            with patch.object(store, "save", side_effect=save):
+                response = app.test_client().post("/api/grades", json={"year": "previous", "quarter": "all"},
+                                                 headers={"X-CSRF-Token": store.csrf})
+                try:
+                    self.assertEqual(response.status_code, 202)
+                    self.assertTrue(response.json["syncing"])
+                    self.assertEqual(response.json["snapshot"], saved)
+                    self.assertTrue(requested.wait(2))
+                finally:
+                    finish.set()
+                self.assertTrue(published.wait(2))
+                with store.lock:
+                    self.assertEqual(store.snapshot["gradeFilters"]["year"], "previous")
+                    self.assertEqual(store.snapshot["gradeFilters"]["quarter"], "all")
 
 
 if __name__ == "__main__":
