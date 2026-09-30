@@ -229,6 +229,34 @@ def read_activity(xml, student_oid):
             "gradesEnabled": root.get("grades") == "true", "attendanceEnabled": root.get("attendance") == "true"}
 
 
+def cache_grade_periods(load_period, year="current", quarter="current"):
+    """Publish a complete set of period views after every required read succeeds."""
+    baseline = load_period("current", "current")
+    periods = {}
+    warnings = list(baseline.get("warnings", []))
+
+    def add(snapshot):
+        filters = snapshot["gradeFilters"]
+        periods[f"{filters['year']}:{filters['quarter']}"] = {
+            "classes": snapshot["classes"], "gradeFilters": filters}
+        warnings.extend(snapshot.get("warnings", []))
+
+    add(baseline)
+    for choice in baseline["gradeFilters"]["years"]:
+        context = choice["value"]
+        first = baseline if context == "current" else load_period(context, "all")
+        add(first)
+        for term in first["gradeFilters"]["quarters"]:
+            if f"{context}:{term['value']}" not in periods:
+                add(load_period(context, term["value"]))
+    if year == "previous" and quarter == "current":
+        quarter = "all"
+    selected = periods.get(f"{year}:{quarter}") or periods["current:current"]
+    return {**baseline, **selected, "gradePeriods": periods,
+            "warnings": list(dict.fromkeys(warnings)),
+            "syncedAt": datetime.now(timezone.utc).isoformat()}
+
+
 class AspenClient:
     def __init__(self, cookies):
         self.session = requests.Session()
@@ -269,8 +297,22 @@ class AspenClient:
             raise AuthenticationRequired("Aspen returned its login page. Reconnect your session.") from None
 
     def sync(self, year="current", quarter="current"):
-        user = self.api("/users/current")
-        student = self.api("/students/studentByPersonOid", {"personOid": user["personOid"]})
+        shared = {"api": {}, "summaries": {}}
+        return cache_grade_periods(lambda context, term: self.sync_period(context, term, shared), year, quarter)
+
+    def sync_period(self, year="current", quarter="current", shared=None):
+        # Reuse assignment/term reads across quarter views within this refresh.
+        # The cache is discarded between refreshes, so data is always re-fetched.
+        def read(path, params=None):
+            if shared is None:
+                return self.api(path, params)
+            key = (path, tuple(sorted((params or {}).items())))
+            if key not in shared["api"]:
+                shared["api"][key] = self.api(path, params)
+            return shared["api"][key]
+
+        user = read("/users/current")
+        student = read("/students/studentByPersonOid", {"personOid": user["personOid"]})
         student_oid = student["studentOid"]
         warnings = []
         attendance = {"available": False, "records": [], "error": "Import the /aspen desktop cookie to load attendance."}
@@ -283,18 +325,18 @@ class AspenClient:
         # previous year. All terms is the default when switching to that year.
         if year == "previous" and quarter == "current":
             quarter = "all"
-        schools = [{"oid": student["schoolOid"]}] if year == "current" else self.api(
+        schools = [{"oid": student["schoolOid"]}] if year == "current" else read(
             "/schools/forStudent", {"studentOid": student_oid, "districtContext": year}) or []
         quarters, classes = [], []
         for school in schools:
-            school_terms = self.api("/gradeTerm/" + quote(student_oid, safe=""),
+            school_terms = read("/gradeTerm/" + quote(student_oid, safe=""),
                                     {"schoolYearContext": year, "schoolOid": school["oid"]}) or []
             for term in school_terms:
                 if not any(existing["oid"] == term["oid"] for existing in quarters):
                     quarters.append(term)
             if quarter not in {"current", "all"} and quarter not in {term["oid"] for term in school_terms}:
                 continue
-            classes.extend(self.api("/classes/" + quote(quarter, safe=""), {"studentOid": student_oid,
+            classes.extend(read("/classes/" + quote(quarter, safe=""), {"studentOid": student_oid,
                            "schoolOid": school["oid"], "districtContext": year}) or [])
         if quarter not in {"current", "all"} and quarter not in {term["oid"] for term in quarters}:
             raise AspenError("That quarter is not available for this school year. Choose another quarter.")
@@ -309,7 +351,9 @@ class AspenClient:
                 warnings.append(str(error))
         elif not self.desktop_available:
             warnings.append("The desktop cookie is missing. Course averages are from the API and may differ from Aspen's desktop view.")
-        if self.desktop_available:
+        if shared is not None and "features" in shared:
+            attendance, activity = shared["features"]
+        elif self.desktop_available:
             for name, path, parser in [
                 ("Attendance", "/aspen/studentAttendanceList.do?navkey=myInfo.att.list", read_attendance),
                 ("Recent activity", "/aspen/studentRecentActivityWidget.do", lambda body: read_activity(body, student_oid)),
@@ -331,18 +375,22 @@ class AspenClient:
                         warnings.append("Some Aspen activity types are not supported: " + ", ".join(data["unsupportedTypes"]))
                     if data.get("available") and not (data["gradesEnabled"] and data["attendanceEnabled"]):
                         warnings.append("Aspen has disabled grades or attendance in its recent activity feed.")
+        if shared is not None:
+            shared["features"] = attendance, activity
         result = []
         for course in classes:
             schedule = course["studentScheduleOid"]
-            terms = self.api("/gradeTerm/class/" + quote(schedule, safe=""))
+            terms = read("/gradeTerm/class/" + quote(schedule, safe=""))
             assignments = []
             for term in terms:
-                items = self.api("/assignments", {"studentOid": student_oid, "studentScheduleOid": schedule,
+                items = read("/assignments", {"studentOid": student_oid, "studentScheduleOid": schedule,
                                  "gradeTermOid": term["oid"], "districtContextOid": year})
                 for item in items:
                     assignments.append({**item, "termOid": term["oid"], "termName": term["gradeTermId"]})
             summary = []
-            if use_desktop:
+            if use_desktop and shared is not None and schedule in shared["summaries"]:
+                summary = shared["summaries"][schedule]
+            elif use_desktop:
                 try:
                     # Obtain a fresh form/token for each navigation. No grade edits are sent.
                     _, form, _ = read_class_list(self.request("GET", CLASS_LIST_PATH).text)
@@ -351,6 +399,8 @@ class AspenClient:
                     summary = read_average_summary(self.request("POST", form.get("action"), data=fields).text)
                 except AspenError as error:
                     warnings.append(f"{course['courseName']}: {error}")
+                if shared is not None:
+                    shared["summaries"][schedule] = summary
             fallback = course.get("sectionTermAverage") if course.get("displayLetterGradesOnly") else " ".join(
                 str(v) for v in [course.get("percentageValue"), course.get("sectionTermAverage")] if v not in (None, ""))
             result.append({**course, "displayGrade": canonical.get(schedule, fallback or ""),
@@ -367,6 +417,10 @@ class AspenClient:
 
 
 def demo_snapshot(year="current", quarter="current"):
+    return cache_grade_periods(demo_period, year, quarter)
+
+
+def demo_period(year="current", quarter="current"):
     """A fictional school week for comparing the dashboard designs."""
     subjects = [
         ("Algebra II", "MATH-201", "Ms. Bennett", "93.4 A", "Quadratic functions", "Problem set: parabolas", "93.4", "46.7", "50"),

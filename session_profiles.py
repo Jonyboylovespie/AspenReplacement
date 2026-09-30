@@ -106,7 +106,9 @@ def read_aspen_session(profile):
         for cookie in source:
             cookies[(cookie["name"], cookie["domain"], cookie["path"])] = cookie
     paths = {cookie["path"] for cookie in cookies.values() if cookie["name"] == "JSESSIONID"}
-    if not {"/app", "/aspen"}.issubset(paths):
+    # Grades can load with the app session alone. A desktop session adds
+    # attendance and category tables, but is not required to reconnect.
+    if not any(path.startswith("/app") for path in paths):
         return None
     if not any(cookie["name"] == "VITHAR_CSRF" for cookie in cookies.values()):
         return None

@@ -128,7 +128,7 @@ class ScraperTests(unittest.TestCase):
              patch.object(client, "request", side_effect=[SimpleNamespace(text='<form name="classListForm"></form>'),
                         SimpleNamespace(text=self.attendance_html()),
                         SimpleNamespace(text='<recent-activity-list daterange="4" grades="true" attendance="true"><recent-activity studentoid="own"><gradebookScore date="2026-10-01" grade="0"/></recent-activity></recent-activity-list>')]) as request:
-            data = client.sync()
+            data = client.sync_period()
         self.assertTrue(data["attendance"]["available"])
         self.assertEqual(data["activityFeed"]["events"][0]["grade"], "0")
         self.assertEqual(request.call_args_list[0].args[1], "/aspen/portalClassList.do?navkey=academics.classes.list")

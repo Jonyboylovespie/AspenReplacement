@@ -29,7 +29,7 @@ class GradePeriodTests(unittest.TestCase):
             self.fail(f"Unexpected endpoint: {path}")
 
         with patch.object(client, "api", side_effect=api):
-            data = client.sync(quarter="term-q2")
+            data = client.sync_period(quarter="term-q2")
         self.assertEqual(data["classes"][0]["displayGrade"], "0")
         self.assertEqual(data["classes"][0]["gradeSource"], "Aspen API")
         self.assertEqual(data["gradeFilters"]["quarter"], "term-q2")
@@ -43,7 +43,7 @@ class GradePeriodTests(unittest.TestCase):
             {"personOid": "person"}, {"studentOid": "student", "schoolOid": "new-school", "name": "Test"},
             [{"oid": "old-school"}], [{"oid": "old-q1", "gradeTermId": "Q1"}], [],
         ]) as api:
-            data = client.sync(year="previous")
+            data = client.sync_period(year="previous")
         self.assertEqual(data["gradeFilters"]["quarter"], "all")
         self.assertNotIn("current", [option["value"] for option in data["gradeFilters"]["quarters"]])
         self.assertEqual(api.call_args_list[3].args, ("/gradeTerm/student", {"schoolYearContext": "previous", "schoolOid": "old-school"}))
@@ -97,11 +97,13 @@ class GradePeriodTests(unittest.TestCase):
                 self.assertEqual(store.snapshot, saved)
             self.assertEqual(client.post("/api/grades", json={"year": "current", "quarter": "current"}).status_code, 403)
             store.snapshot["mode"] = "live"
-            self.assertEqual(client.post("/api/grades", json={"year": "current", "quarter": "current"}, headers=headers).status_code, 401)
             store.syncing = True
-            self.assertEqual(client.post("/api/grades", json={"year": "current", "quarter": "current"}, headers=headers).status_code, 409)
+            with patch.object(store, "resume_session") as reconnect, patch.object(store, "start_refresh") as refresh:
+                self.assertEqual(client.post("/api/grades", json={"year": "previous", "quarter": "all"}, headers=headers).status_code, 200)
+                reconnect.assert_not_called()
+                refresh.assert_not_called()
 
-    def test_live_switch_keeps_old_snapshot_until_sync_completes(self):
+    def test_refresh_keeps_old_cache_until_sync_completes(self):
         with tempfile.TemporaryDirectory() as directory:
             app = create_app(directory)
             store = app.extensions["aspen_store"]
@@ -132,19 +134,109 @@ class GradePeriodTests(unittest.TestCase):
                 published.set()
 
             with patch.object(store, "save", side_effect=save):
-                response = app.test_client().post("/api/grades", json={"year": "previous", "quarter": "all"},
-                                                 headers={"X-CSRF-Token": store.csrf})
+                store.start_refresh(year="previous", quarter="all")
                 try:
-                    self.assertEqual(response.status_code, 202)
-                    self.assertTrue(response.json["syncing"])
-                    self.assertEqual(response.json["snapshot"], saved)
                     self.assertTrue(requested.wait(2))
+                    self.assertTrue(store.view()["syncing"])
+                    self.assertEqual(store.view()["snapshot"], saved)
                 finally:
                     finish.set()
                 self.assertTrue(published.wait(2))
                 with store.lock:
                     self.assertEqual(store.snapshot["gradeFilters"]["year"], "previous")
                     self.assertEqual(store.snapshot["gradeFilters"]["quarter"], "all")
+
+    def test_restart_restores_only_saved_students_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            store.save({"mode": "live", "student": {"studentOid": "saved-student"}, "classes": []})
+            for student_oid in ("other-student", "saved-student"):
+                client = unittest.mock.Mock()
+                with patch("app.existing_profile"), patch("app.read_aspen_session", return_value="cookies"), \
+                     patch.object(store, "verify_session", return_value=(client, {"studentOid": student_oid})), \
+                     patch.object(store, "start_refresh") as refresh:
+                    restored = store.resume_session()
+                self.assertEqual(restored, student_oid == "saved-student")
+                self.assertEqual(store.snapshot["student"]["studentOid"], "saved-student")
+                if restored:
+                    self.assertIs(store.client, client)
+                    self.assertFalse(store.needs_auth)
+                    refresh.assert_called_once()
+                else:
+                    self.assertIsNone(store.client)
+                    refresh.assert_not_called()
+
+    def test_resume_does_not_override_disconnect_during_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(directory)
+            store = app.extensions["aspen_store"]
+            store.save({"mode": "live", "student": {"studentOid": "saved-student"}, "classes": []})
+
+            def verify(raw):
+                app.test_client().post("/api/disconnect", headers={"X-CSRF-Token": store.csrf})
+                return unittest.mock.Mock(), {"studentOid": "saved-student"}
+
+            with patch("app.existing_profile"), patch("app.read_aspen_session", return_value="cookies"), \
+                 patch.object(store, "verify_session", side_effect=verify):
+                self.assertFalse(store.resume_session())
+            self.assertIsNone(store.client)
+            self.assertTrue(store.needs_auth)
+
+    def test_cached_grade_selection_works_offline_without_reconnecting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(directory)
+            store = app.extensions["aspen_store"]
+            snapshot = demo_snapshot()
+            snapshot["mode"] = "live"
+            store.save(snapshot)
+            with patch.object(store, "resume_session") as reconnect, patch.object(store, "start_refresh") as refresh:
+                response = app.test_client().post("/api/grades", json={"year": "previous", "quarter": "all"},
+                                                 headers={"X-CSRF-Token": store.csrf})
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json["connected"])
+            self.assertEqual(response.json["snapshot"]["gradeFilters"]["year"], "previous")
+            self.assertEqual(response.json["snapshot"]["classes"][0]["courseName"], "Algebra I")
+            reconnect.assert_not_called()
+            refresh.assert_not_called()
+
+    def test_full_sync_caches_both_years_and_reads_assignments_once(self):
+        client = AspenClient(requests.cookies.RequestsCookieJar())
+        calls = []
+
+        def terms(year):
+            return [{"oid": f"{year}-q{i}", "gradeTermId": f"Q{i}"} for i in (1, 2)]
+
+        def api(path, params=None):
+            calls.append((path, params))
+            if path == "/users/current":
+                return {"personOid": "person"}
+            if path == "/students/studentByPersonOid":
+                return {"studentOid": "student", "schoolOid": "school", "name": "Test"}
+            if path == "/schools/forStudent":
+                return [{"oid": "old-school"}]
+            if path == "/gradeTerm/student":
+                return terms(params["schoolYearContext"])
+            if path.startswith("/classes/"):
+                year = params["districtContext"]
+                grade = "80" if path.endswith("q2") else "95"
+                return [{"studentScheduleOid": f"{year}-class", "courseName": "Math", "percentageValue": grade}]
+            if path.startswith("/gradeTerm/class/"):
+                return terms(path.split("/")[-1].replace("-class", ""))
+            if path == "/assignments":
+                return [{"oid": params["gradeTermOid"], "name": "Quiz", "scoreLightModels": [{"score": "0"}]}]
+            self.fail(f"Unexpected endpoint: {path}")
+
+        with patch.object(client, "api", side_effect=api):
+            data = client.sync()
+            self.assertEqual(set(data["gradePeriods"]), {
+                "current:current", "current:all", "current:current-q1", "current:current-q2",
+                "previous:all", "previous:previous-q1", "previous:previous-q2"})
+            self.assertEqual(data["gradePeriods"]["previous:previous-q2"]["classes"][0]["displayGrade"], "80")
+            self.assertEqual(sum(path == "/assignments" for path, _ in calls), 4)
+            self.assertEqual(sum(path == "/users/current" for path, _ in calls), 1)
+            calls.clear()
+            client.sync()
+            self.assertEqual(sum(path == "/assignments" for path, _ in calls), 4)
 
 
 if __name__ == "__main__":

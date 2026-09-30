@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import sqlite3
 import tempfile
 import threading
 
@@ -14,6 +15,7 @@ import requests
 
 from aspen import AspenClient, AspenError, AuthenticationRequired, CookieImportError, demo_snapshot, parse_cookies
 from sign_in import SignInManager
+from session_profiles import existing_profile, read_aspen_session
 
 ROOT = Path(__file__).resolve().parent
 REFRESH_SECONDS = 300
@@ -78,6 +80,41 @@ class Store:
             self.needs_auth = False
             self.error = None
             self.start_refresh()
+
+    def resume_session(self, refresh=True):
+        """Restore the saved student's existing login without replacing accounts."""
+        with self.lock:
+            saved = self.snapshot
+            cancelled = self.sign_in.cancelled
+            if not saved or saved.get("mode") != "live" or self.syncing or self.sign_in.view()["active"]:
+                return False
+            if cancelled.is_set():
+                return False
+            if self.client is not None and not self.needs_auth:
+                return True
+        try:
+            raw = read_aspen_session(existing_profile())
+            if not raw:
+                return False
+            client, student = self.verify_session(raw)
+        except (AspenError, CookieImportError, ValueError, TypeError, KeyError, OSError, sqlite3.DatabaseError, requests.RequestException):
+            return False
+        with self.lock:
+            # A late verification must not override a new login, clear, demo,
+            # or a snapshot belonging to another student.
+            if (self.snapshot is not saved or self.syncing or self.sign_in.view()["active"]
+                    or self.sign_in.cancelled is not cancelled or cancelled.is_set()):
+                return False
+            if student["studentOid"] != saved.get("student", {}).get("studentOid"):
+                return False
+            if self.client is not None and not self.needs_auth:
+                return True
+            self.client = client
+            self.needs_auth = False
+            self.error = None
+            if refresh:
+                self.start_refresh()
+            return True
 
     def refresh(self, year=None, quarter=None):
         if not self.sync_lock.acquire(blocking=False):
@@ -236,32 +273,24 @@ def create_app(directory=None):
     @app.post("/api/grades")
     def grade_period():
         with store.lock:
-            if store.syncing or store.sign_in.view()["active"]:
-                return jsonify(error="Wait for the current connection or sync to finish."), 409
             if not store.snapshot:
                 return jsonify(error="Connect Aspen or load sample data first."), 400
             body = request.get_json(silent=True)
             if not isinstance(body, dict):
                 return jsonify(error="Choose a school year and quarter."), 400
             year, quarter = body.get("year"), body.get("quarter")
-            filters = store.snapshot.get("gradeFilters", {})
             if not isinstance(year, str) or not isinstance(quarter, str):
                 return jsonify(error="Choose a school year and quarter."), 400
-            years = {option["value"] for option in filters.get("years", [])} | {"current", "previous"}
-            quarters = {option["value"] for option in filters.get("quarters", [])} | {"current", "all"}
-            if not filters:
-                quarters.update(term["oid"] for course in store.snapshot.get("classes", [])
-                                for term in course.get("terms", []))
-            if year not in years or quarter not in quarters:
-                return jsonify(error="That school year or quarter is not available. Refresh Aspen and try again."), 400
-            if store.snapshot.get("mode") == "demo":
-                store.save(demo_snapshot(year, quarter))
-                return jsonify(store.view())
-            if store.client is None or store.needs_auth:
-                return jsonify(error="Reconnect Aspen to change the school year or quarter."), 401
-            store.error = None
-            store.start_refresh(year, quarter)
-        return jsonify(store.view()), 202
+            if year == "previous" and quarter == "current":
+                quarter = "all"
+            periods = store.snapshot.get("gradePeriods", {})
+            period = periods.get(f"{year}:{quarter}")
+            if not period:
+                return jsonify(error="That period is not cached. Refresh Aspen to download all school years and quarters."), 400
+            # Compatibility for existing callers: selection only changes the
+            # local view. It never reconnects or sends a request to Aspen.
+            store.save({**store.snapshot, **period})
+        return jsonify(store.view())
 
     @app.post("/api/disconnect")
     def disconnect():
@@ -299,6 +328,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     app = create_app()
     store = app.extensions["aspen_store"]
+
+    threading.Thread(target=store.resume_session, daemon=True).start()
 
     def periodically_refresh():
         while True:

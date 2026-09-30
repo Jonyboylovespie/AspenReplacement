@@ -7,7 +7,29 @@ let selectedClass = "";
 let selectedTerm = "all";
 let busy = false;
 let feedLimit = 12;
-let pendingGradePeriod = null;
+let selectedGradePeriod = null;
+let gradePeriodOwner = "";
+
+function gradePeriodStorageKey() {
+  return `aspen-grade-period:${gradePeriodOwner}`;
+}
+
+function gradePeriodSnapshot(snapshot) {
+  const owner = snapshot ? `${snapshot.mode}:${snapshot.student?.studentOid || ""}` : "";
+  if (owner !== gradePeriodOwner) {
+    gradePeriodOwner = owner;
+    selectedGradePeriod = null;
+    try { selectedGradePeriod = JSON.parse(localStorage.getItem(gradePeriodStorageKey())); } catch { /* Use the snapshot's default. */ }
+  }
+  if (!snapshot?.gradePeriods) return snapshot;
+  const requested = selectedGradePeriod || snapshot.gradeFilters || {year: "current", quarter: "current"};
+  const period = snapshot.gradePeriods[`${requested.year}:${requested.quarter}`] ||
+    snapshot.gradePeriods[`${requested.year}:${requested.year === "previous" ? "all" : "current"}`] ||
+    snapshot.gradePeriods["current:current"];
+  if (!period) return snapshot;
+  selectedGradePeriod = {year: period.gradeFilters.year, quarter: period.gradeFilters.quarter};
+  return {...snapshot, ...period};
+}
 
 function gradePeriod(snapshot = currentState?.snapshot) {
   const terms = new Map((snapshot?.classes || []).flatMap(course =>
@@ -145,8 +167,8 @@ function classesWithGradesFirst(courses) {
 function setState(state) {
   const previousSignIn = currentState?.signIn?.phase;
   const previousPeriod = gradePeriod();
-  currentState = state;
-  const snapshot = state.snapshot;
+  currentState = {...state, snapshot: gradePeriodSnapshot(state.snapshot)};
+  const snapshot = currentState.snapshot;
   const demo = snapshot?.mode === "demo";
   $("status").textContent = state.syncing ? "Syncing from Aspen…" : demo ? "Showing sample data." :
     state.error ? state.error : state.connected ? "Connected to Aspen. Automatically refreshes every 5 minutes." :
@@ -154,17 +176,16 @@ function setState(state) {
   $("updated").textContent = snapshot?.syncedAt ? `${demo ? "Sample loaded" : "Last successful sync"}: ${new Date(snapshot.syncedAt).toLocaleString()}${!demo && state.stale ? " (saved data; may be out of date)" : ""}` : "";
   const signingIn = !!state.signIn?.active;
   const disabled = busy || state.syncing;
-  const canChangePeriod = demo || state.connected;
-  $("grade-year").disabled = disabled || signingIn || !canChangePeriod;
-  $("grade-quarter").disabled = disabled || signingIn || !canChangePeriod;
-  if (!busy && !state.syncing) pendingGradePeriod = null;
+  const canChangePeriod = !!snapshot?.gradePeriods;
+  $("grade-year").disabled = !canChangePeriod;
+  $("grade-quarter").disabled = !canChangePeriod;
   const filters = gradePeriod();
   if (previousPeriod.year !== filters.year || previousPeriod.quarter !== filters.quarter) {
     selectedTerm = ["current", "all"].includes(filters.quarter) ? "all" : filters.quarter;
     $("assignment-search").value = "";
   }
-  $("grade-period-status").textContent = pendingGradePeriod ? `Loading ${pendingGradePeriod.label}…` :
-    `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" : !canChangePeriod ? " · Reconnect Aspen to change the period." : ""}`;
+  $("grade-period-status").textContent = `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" :
+    !canChangePeriod ? " · Refresh Aspen once to download all periods." : ""}`;
   $("home-grade-period").textContent = gradePeriodLabel(filters);
   $("refresh").disabled = disabled || signingIn || !state.connected;
   $("disconnect").disabled = disabled || (!state.connected && !signingIn);
@@ -193,7 +214,7 @@ function setState(state) {
     state.stale ? "Showing your saved snapshot" : "Synced with Aspen";
   $("empty").hidden = !!snapshot;
   $("dashboard").hidden = !snapshot;
-  const key = snapshot ? `${snapshot.mode}:${snapshot.syncedAt}` : null;
+  const key = snapshot ? `${snapshot.mode}:${snapshot.syncedAt}:${filters.year}:${filters.quarter}` : null;
   if (key !== renderedSnapshot) {
     renderedSnapshot = key;
     if (snapshot) {
@@ -204,10 +225,8 @@ function setState(state) {
       route();
     }
   }
-  if (!pendingGradePeriod) {
-    $("grade-year").value = filters.year;
-    $("grade-quarter").value = filters.quarter;
-  }
+  $("grade-year").value = filters.year;
+  $("grade-quarter").value = filters.quarter;
 }
 
 function featureStatus(data) {
@@ -487,15 +506,17 @@ $("demo").addEventListener("click", loadDemo);
 $("empty-demo").addEventListener("click", loadDemo);
 $("class-select").addEventListener("change", () => { location.hash = `class/${encodeURIComponent($("class-select").value)}`; });
 $("term-select").addEventListener("change", () => { selectedTerm = $("term-select").value; renderAssignments(); });
-async function changeGradePeriod(yearChanged) {
+function changeGradePeriod(yearChanged) {
   const year = $("grade-year").value;
   const quarter = yearChanged ? (year === "previous" ? "all" : "current") : $("grade-quarter").value;
-  if (yearChanged) $("grade-quarter").value = quarter;
-  pendingGradePeriod = {year, quarter, label: gradePeriodLabel({...gradePeriod(), year, quarter})};
-  if (!await action("/api/grades", {year, quarter})) {
-    pendingGradePeriod = null;
-    if (currentState) setState(currentState);
+  if (!currentState?.snapshot?.gradePeriods?.[`${year}:${quarter}`]) {
+    showError("That period is not cached. Refresh Aspen to download all school years and quarters.");
+    renderGradeFilters();
+    return;
   }
+  selectedGradePeriod = {year, quarter};
+  try { localStorage.setItem(gradePeriodStorageKey(), JSON.stringify(selectedGradePeriod)); } catch { /* Selection still works for this visit. */ }
+  setState(currentState);
 }
 $("grade-year").addEventListener("change", () => changeGradePeriod(true));
 $("grade-quarter").addEventListener("change", () => changeGradePeriod(false));

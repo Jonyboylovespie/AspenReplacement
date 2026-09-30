@@ -48,6 +48,18 @@ class ExistingSessionTests(unittest.TestCase):
         self.write_session([])
         self.assertIsNone(read_aspen_session(self.profile))
 
+    def test_app_session_reconnects_without_optional_desktop_cookie(self):
+        cookies = [cookie for cookie in self.cookies() if cookie.get("path") != "/aspen"]
+        self.write_session(cookies)
+        raw = read_aspen_session(self.profile)
+        self.assertIsNotNone(raw)
+        verify = Mock(return_value=("client", {"studentOid": "own-student"}))
+        self.assertEqual(ExistingBrowserLogin(profile=self.profile)(threading.Event(), Mock(), verify),
+                         ("client", {"studentOid": "own-student"}))
+        for name in ("JSESSIONID", "VITHAR_CSRF"):
+            self.write_session([cookie for cookie in cookies if cookie["name"] != name])
+            self.assertIsNone(read_aspen_session(self.profile))
+
     def test_persistent_cookies_are_scoped_and_original_database_is_untouched(self):
         database = self.profile / "cookies.sqlite"
         with sqlite3.connect(database) as connection:
