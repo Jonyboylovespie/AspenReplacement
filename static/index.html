@@ -64,20 +64,16 @@
     <p id="account-status"></p>
     <p id="status" role="status" aria-live="polite">Loading…</p>
     <p id="connection-error" class="alert" role="alert" hidden></p>
-    <section class="google-connection" aria-labelledby="google-heading">
-      <h3 id="google-heading">Your Google account. Your school day.</h3>
-      <p>Sign in with your school Google account. We’ll connect Aspen and bring in your grades, attendance, and recent activity.</p>
+    <div class="google-connection">
       <a id="google-sign-in" class="google-button" href="/auth/google" target="_self" rel="noopener noreferrer" aria-disabled="true">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48"><path fill="#4285f4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.8-3.5 6.1-8.7 6.1-15z"/><path fill="#34a853" d="M24 44c5.5 0 10.2-1.8 13.6-5l-6.6-5.1c-1.8 1.2-4.1 2-7 2-5.3 0-9.8-3.6-11.4-8.5H5.8v5.3A20.5 20.5 0 0 0 24 44z"/><path fill="#fbbc05" d="M12.6 27.4a12.3 12.3 0 0 1 0-7.8v-5.3H5.8a20 20 0 0 0 0 18.4l6.8-5.3z"/><path fill="#ea4335" d="M24 11.1c3 0 5.7 1 7.8 3l5.8-5.8A19.6 19.6 0 0 0 24 3 20.5 20.5 0 0 0 5.8 14.3l6.8 5.3A12 12 0 0 1 24 11.1z"/></svg>
         <span id="google-sign-in-label">Sign in with Google</span>
       </a>
-      <p id="sign-in-caption" class="sign-in-caption">Sign in with Google to see only your own grades.</p>
-      <p id="extension-status" class="sign-in-caption"></p>
       <div id="sign-in-progress" class="sign-in-progress" hidden>
         <p id="sign-in-message" role="status" aria-live="polite"></p>
         <button id="cancel-sign-in" type="button">Cancel sign-in</button>
       </div>
-    </section>
+    </div>
     <div class="connection-actions"><button id="logout" type="button" hidden>Sign out of Google</button><button id="disconnect" type="button" disabled>Disconnect</button><button id="demo" type="button" disabled>Load sample data</button></div>
     <details class="manage-data"><summary>Manage local data</summary><p>Clearing removes your saved grades and Aspen session. Your records in Aspen are unaffected.</p><button id="clear" type="button" disabled>Clear local data</button></details>
   </dialog>

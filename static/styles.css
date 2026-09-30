@@ -1056,11 +1056,6 @@ dialog details {
   border-top: 1px solid var(--line);
 }
 
-.google-connection h3 {
-  max-width: 24ch;
-  font-size: 1.5rem;
-}
-
 .google-button {
   display: flex;
   width: 100%;
@@ -1068,7 +1063,6 @@ dialog details {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-top: 22px;
   border: 1px solid #747775;
   border-radius: 3px;
   background: #ffffff;
@@ -1088,10 +1082,6 @@ dialog details {
 
 .google-button svg {
   flex: 0 0 auto;
-}
-
-.google-connection .sign-in-caption {
-  font-size: 0.72rem;
 }
 
 .sign-in-progress {

@@ -179,8 +179,6 @@ function setState(state) {
   const signedIn = state.signedIn !== false;
   $("account-status").textContent = state.account ? `Signed in as ${state.account.email}` : "";
   $("logout").hidden = !state.signedIn;
-  $("sign-in-caption").textContent = state.signedIn ? "Your Aspen login is saved securely for this Google account. Reconnect if Aspen expires it." : "Sign in with Google to see only your own grades.";
-  $("extension-status").textContent = connector?.ready ? "BetterASSpen Connect is ready." : "Install BetterASSpen Connect in this browser and set its address once to connect Aspen automatically.";
   $("status").textContent = state.syncing ? "Syncing from Aspen…" : demo ? "Showing sample data." :
     state.error ? state.error : state.connected ? "Connected to Aspen. Automatically refreshes every 5 minutes." :
     snapshot ? "Showing saved data. Connect Aspen to get updates." : "Aspen is not connected.";
