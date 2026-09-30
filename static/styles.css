@@ -954,15 +954,10 @@ summary {
 }
 
 .welcome-symbol {
-  display: grid;
+  display: block;
   width: 66px;
   height: 66px;
   margin-bottom: 27px;
-  place-items: center;
-  border: 1px solid var(--line);
-  background: var(--tint);
-  color: var(--accent);
-  font-size: 1.8rem;
 }
 
 .empty-welcome h1 {
@@ -970,21 +965,11 @@ summary {
   font-size: clamp(3rem, 6vw, 5.7rem);
 }
 
-.empty-welcome p {
-  margin: 22px 0 29px;
-  color: var(--muted);
-}
-
 .empty-welcome > div {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-}
-
-.empty-welcome small {
-  display: block;
-  margin-top: 24px;
-  color: var(--muted);
+  margin-top: 29px;
 }
 
 .primary {
