@@ -4,6 +4,8 @@ import unittest
 from unittest.mock import patch
 
 import requests
+from cryptography.fernet import Fernet
+import json
 
 from app import Store
 from helpers import create_test_app as create_app
@@ -126,6 +128,7 @@ class GradePeriodTests(unittest.TestCase):
 
             client = unittest.mock.Mock()
             client.sync.side_effect = sync
+            client.session = requests.Session()
             store.client = client
             store.needs_auth = False
             original_save = store.save
@@ -149,12 +152,12 @@ class GradePeriodTests(unittest.TestCase):
 
     def test_restart_restores_only_saved_students_session(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = Store(directory)
+            store = Store(directory, cipher=Fernet(Fernet.generate_key()))
             store.save({"mode": "live", "student": {"studentOid": "saved-student"}, "classes": []})
+            store._save_session(store.cipher.encrypt(json.dumps({"cookies": [], "studentOid": "saved-student"}).encode()))
             for student_oid in ("other-student", "saved-student"):
                 client = unittest.mock.Mock()
-                with patch("app.existing_profile"), patch("app.read_aspen_session", return_value="cookies"), \
-                     patch.object(store, "verify_session", return_value=(client, {"studentOid": student_oid})), \
+                with patch.object(store, "verify_session", return_value=(client, {"studentOid": student_oid})), \
                      patch.object(store, "start_refresh") as refresh:
                     restored = store.resume_session()
                 self.assertEqual(restored, student_oid == "saved-student")
@@ -177,8 +180,8 @@ class GradePeriodTests(unittest.TestCase):
                 app.test_client().post("/api/disconnect", headers={"X-CSRF-Token": store.csrf})
                 return unittest.mock.Mock(), {"studentOid": "saved-student"}
 
-            with patch("app.existing_profile"), patch("app.read_aspen_session", return_value="cookies"), \
-                 patch.object(store, "verify_session", side_effect=verify):
+            store._save_session(store.cipher.encrypt(json.dumps({"cookies": [], "studentOid": "saved-student"}).encode()))
+            with patch.object(store, "verify_session", side_effect=verify):
                 self.assertFalse(store.resume_session())
             self.assertIsNone(store.client)
             self.assertTrue(store.needs_auth)

@@ -11,8 +11,8 @@
   <link rel="icon" type="image/svg+xml" href="/fonts/site-icons/betteraspen-favicon.svg?v=teal-leaf-2" sizes="any">
   <link rel="apple-touch-icon" href="/fonts/site-icons/apple-touch-icon.png?v=teal-leaf-2">
   <link rel="stylesheet" href="/styles.css">
-  <script src="/connect.js" defer></script>
   <script src="/app.js" defer></script>
+  <script src="/sync-controls.js" defer></script>
 </head>
 <body data-design="passing-period" data-mode="light">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -29,10 +29,15 @@
       </nav>
     </aside>
     <main id="main" tabindex="-1">
-      <header class="topbar" aria-label="Aspen status and dashboard controls">
-        <div class="sync-note" role="status"><span aria-hidden="true">↻</span><div><strong id="sync-heading">Aspen is not connected</strong><p id="updated"></p></div></div>
-        <div class="topbar-controls"><button id="mode-toggle" class="mode-toggle" type="button" aria-pressed="false" aria-label="Use dark mode"><span class="mode-track" aria-hidden="true"><span></span></span><span id="mode-label">Dark mode</span></button><button class="quiet-button connection-open" type="button" aria-label="Open Aspen connection settings">Connection</button><span id="data-label" class="data-label"></span><button id="refresh" class="quiet-button" type="button" disabled><span aria-hidden="true">↻</span> Refresh</button></div>
-      </header>
+      <div class="sync-drawer" id="sync-drawer">
+        <button id="sync-toggle" class="sync-toggle" type="button" aria-expanded="false" aria-controls="sync-panel" aria-label="Show sync controls" title="Show sync controls">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+        </button>
+        <header id="sync-panel" class="topbar" aria-label="Aspen status and dashboard controls" hidden>
+          <div class="sync-note" role="status"><span aria-hidden="true">↻</span><div><strong id="sync-heading">Aspen is not connected</strong><p id="updated"></p></div></div>
+          <div class="topbar-controls"><button id="mode-toggle" class="mode-toggle" type="button" aria-pressed="false" aria-label="Use dark mode"><span class="mode-track" aria-hidden="true"><span></span></span><span id="mode-label">Dark mode</span></button><button class="quiet-button connection-open" type="button" aria-label="Open Aspen connection settings">Connection</button><span id="data-label" class="data-label"></span><button id="refresh" class="quiet-button" type="button" disabled><span aria-hidden="true">↻</span> Refresh</button></div>
+        </header>
+      </div>
       <div class="page-content">
         <p id="error" class="alert" role="alert" hidden></p>
         <details id="notice" class="notice" hidden><summary id="notice-title">Data notes</summary><ul id="warnings"></ul></details>
@@ -43,7 +48,7 @@
         </section>
         <div id="dashboard" hidden>
           <section id="home-view" class="view" aria-labelledby="home-title">
-            <div class="page-heading"><div><h1 id="home-title">Welcome back.</h1><p>Here’s what’s happening with your classes.</p></div><span id="today" class="today"></span></div>
+            <div class="page-heading"><div><h1 id="home-title">Welcome back.</h1></div><span id="today" class="today"></span></div>
             <div class="home-layout">
               <section class="activity-section panel" aria-labelledby="activity-title"><div class="section-heading"><div><h2 id="activity-title">Recent activity</h2><p id="feed-status"></p></div></div>
                 <div class="filter-row"><label class="search-field"><span aria-hidden="true">⌕</span><input id="feed-search" type="search" aria-label="Search activity" placeholder="Search activity…"></label><select id="feed-type" aria-label="Activity type"><option value="all">All activity</option><option value="grade">Posted grades</option><option value="dailyAttendance">Daily attendance</option><option value="classAttendance">Class attendance</option></select></div>
@@ -52,9 +57,9 @@
               <aside class="home-aside"><section class="class-overview panel"><div class="section-heading"><div><h2>Your classes</h2><p id="home-grade-period">Current averages</p></div><a href="#grades" class="text-link">View all</a></div><div id="home-classes"></div></section></aside>
             </div>
           </section>
-          <section id="grades-view" class="view" aria-labelledby="classes-title" hidden><div class="page-heading"><div><h1 id="classes-title">Your grades</h1><p>Find your footing. See the details behind every grade.</p></div><span id="class-total" class="count-label"></span></div><div class="grades-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="class-search" type="search" aria-label="Search classes" placeholder="Find a class or teacher…"></label><div class="grade-period-controls"><div class="grade-period-field"><label for="grade-year">School year</label><select id="grade-year"><option value="current">Current school year</option></select></div><div class="grade-period-field"><label for="grade-quarter">Quarter</label><select id="grade-quarter"><option value="current">Current quarter</option></select></div></div></div><p id="grade-period-status" class="grade-period-status" role="status" aria-live="polite"></p><div id="classes" class="course-grid"></div><p id="class-empty" class="empty-result" hidden>No classes match your search.</p></section>
+          <section id="grades-view" class="view" aria-labelledby="classes-title" hidden><div class="page-heading"><div><h1 id="classes-title">Your grades</h1></div><span id="class-total" class="count-label"></span></div><div class="grades-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="class-search" type="search" aria-label="Search classes" placeholder="Find a class or teacher…"></label><div class="grade-period-controls"><div class="grade-period-field"><label for="grade-year">School year</label><select id="grade-year"><option value="current">Current school year</option></select></div><div class="grade-period-field"><label for="grade-quarter">Quarter</label><select id="grade-quarter"><option value="current">Current quarter</option></select></div></div></div><p id="grade-period-status" class="grade-period-status" role="status" aria-live="polite"></p><div id="classes" class="course-grid"></div><p id="class-empty" class="empty-result" hidden>No classes match your search.</p></section>
           <section id="detail-view" class="view" aria-labelledby="details-title" hidden><a class="back-link" href="#grades">‹ All classes</a><div class="page-heading detail-heading"><div><h1 id="details-title">Class breakdown</h1><p id="course-info"></p></div><div class="detail-grade"><strong id="course-grade"></strong><span id="grade-source"></span></div></div><div class="detail-controls"><label for="class-select">Switch class</label><select id="class-select"></select></div><section class="panel summary-panel"><div class="section-heading"><h2>Averages & category weights</h2><span>Reported by Aspen</span></div><p id="summary-empty" class="empty-result"></p><div class="table-scroll"><table id="summary-table" hidden><caption class="sr-only">Aspen average summary</caption><tbody id="average-summary"></tbody></table></div></section><section class="panel"><div class="section-heading"><h2>Assignments</h2><span id="assignment-count" role="status"></span></div><div class="filter-row"><label class="search-field"><span aria-hidden="true">⌕</span><input id="assignment-search" type="search" aria-label="Search assignments" placeholder="Find an assignment…"></label><label class="term-label" for="term-select">Term <select id="term-select"><option value="all">All terms</option></select></label></div><p class="mobile-table-hint" id="assignment-scroll-hint">Swipe sideways to see scores and assignment details.</p><div class="table-scroll" tabindex="0" role="region" aria-label="Assignment details" aria-describedby="assignment-scroll-hint"><table class="assignment-table"><thead><tr><th scope="col">Assignment</th><th scope="col">Term</th><th scope="col">Category</th><th scope="col">Assigned</th><th scope="col">Due</th><th scope="col">Score</th><th scope="col">Possible</th><th scope="col">Grade</th><th scope="col">Status</th><th scope="col">Details</th></tr></thead><tbody id="assignments"></tbody></table></div><p id="assignments-empty" class="empty-result" hidden>No assignments match these filters.</p></section></section>
-          <section id="attendance-view" class="view" aria-labelledby="attendance-title" hidden><div class="page-heading"><div><h1 id="attendance-title">Your attendance</h1><p>A clear record of when you were here, and when you weren’t.</p></div></div><div class="attendance-summary"><span class="attendance-symbol" aria-hidden="true">▦</span><div><h2>School attendance</h2><p id="attendance-summary"></p></div></div><div class="attendance-layout"><section class="panel"><div class="section-heading"><h2>Daily attendance</h2></div><p id="attendance-status" class="source-note"></p><div class="table-scroll"><table><thead><tr><th scope="col">Date</th><th scope="col">Code</th><th scope="col">Reason</th></tr></thead><tbody id="daily-attendance"></tbody></table></div><p class="source-note">Recorded events only, not a calendar of every school day.</p></section><section class="panel"><div class="section-heading"><h2>Class attendance</h2></div><p id="period-status" class="source-note"></p><div class="table-scroll"><table><thead><tr><th scope="col">Date</th><th scope="col">Class</th><th scope="col">Period</th><th scope="col">Code</th><th scope="col">Details</th></tr></thead><tbody id="period-attendance"></tbody></table></div></section></div></section>
+          <section id="attendance-view" class="view" aria-labelledby="attendance-title" hidden><div class="page-heading"><div><h1 id="attendance-title">Your attendance</h1></div></div><div class="attendance-summary"><span class="attendance-symbol" aria-hidden="true">▦</span><div><h2>School attendance</h2><p id="attendance-summary"></p></div></div><div class="attendance-layout"><section class="panel"><div class="section-heading"><h2>Daily attendance</h2></div><p id="attendance-status" class="source-note"></p><div class="table-scroll"><table><thead><tr><th scope="col">Date</th><th scope="col">Code</th><th scope="col">Reason</th></tr></thead><tbody id="daily-attendance"></tbody></table></div><p class="source-note">Recorded events only, not a calendar of every school day.</p></section><section class="panel"><div class="section-heading"><h2>Class attendance</h2></div><p id="period-status" class="source-note"></p><div class="table-scroll"><table><thead><tr><th scope="col">Date</th><th scope="col">Class</th><th scope="col">Period</th><th scope="col">Code</th><th scope="col">Details</th></tr></thead><tbody id="period-attendance"></tbody></table></div></section></div></section>
         </div>
       </div>
     </main>
@@ -64,16 +69,27 @@
     <p id="account-status"></p>
     <p id="status" role="status" aria-live="polite">Loading…</p>
     <p id="connection-error" class="alert" role="alert" hidden></p>
-    <div class="google-connection">
+    <div id="google-connection" class="google-connection">
       <a id="google-sign-in" class="google-button" href="/auth/google" target="_self" rel="noopener noreferrer" aria-disabled="true">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48"><path fill="#4285f4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.8-3.5 6.1-8.7 6.1-15z"/><path fill="#34a853" d="M24 44c5.5 0 10.2-1.8 13.6-5l-6.6-5.1c-1.8 1.2-4.1 2-7 2-5.3 0-9.8-3.6-11.4-8.5H5.8v5.3A20.5 20.5 0 0 0 24 44z"/><path fill="#fbbc05" d="M12.6 27.4a12.3 12.3 0 0 1 0-7.8v-5.3H5.8a20 20 0 0 0 0 18.4l6.8-5.3z"/><path fill="#ea4335" d="M24 11.1c3 0 5.7 1 7.8 3l5.8-5.8A19.6 19.6 0 0 0 24 3 20.5 20.5 0 0 0 5.8 14.3l6.8 5.3A12 12 0 0 1 24 11.1z"/></svg>
         <span id="google-sign-in-label">Sign in with Google</span>
       </a>
-      <div id="sign-in-progress" class="sign-in-progress" hidden>
-        <p id="sign-in-message" role="status" aria-live="polite"></p>
-        <button id="cancel-sign-in" type="button">Cancel sign-in</button>
-      </div>
     </div>
+    <form id="cookie-form" class="cookie-form" autocomplete="off" hidden>
+      <h3>Aspen cookie values</h3>
+      <p>Sign into <a href="https://aspen.darienps.org/app/" target="_blank" rel="noopener noreferrer">Aspen</a>, then open your browser’s developer tools. Under Application → Cookies (Chrome) or Storage → Cookies (Firefox), select aspen.darienps.org and copy the values below.</p>
+      <label for="app-session">JSESSIONID · /app <span>Required</span></label>
+      <input id="app-session" name="appSession" type="password" required autocomplete="off" spellcheck="false" maxlength="8192">
+      <label for="csrf-cookie">VITHAR_CSRF <span>Required</span></label>
+      <input id="csrf-cookie" name="csrf" type="password" required autocomplete="off" spellcheck="false" maxlength="8192">
+      <label for="desktop-session">JSESSIONID · /aspen <span>Optional</span></label>
+      <input id="desktop-session" name="desktopSession" type="password" autocomplete="off" spellcheck="false" maxlength="8192" aria-describedby="desktop-cookie-help">
+      <p id="desktop-cookie-help">Open Aspen’s desktop portal to find this cookie. It enables attendance, recent activity, and desktop averages.</p>
+      <label for="clearance-cookie">cf_clearance <span>Optional, if present</span></label>
+      <input id="clearance-cookie" name="clearance" type="password" autocomplete="off" spellcheck="false" maxlength="8192">
+      <p>Copy only each cookie’s value. Your session is encrypted on the server. When it expires, enter fresh values here.</p>
+      <button id="connect-aspen" class="primary" type="submit">Save and connect</button>
+    </form>
     <div class="connection-actions"><button id="logout" type="button" hidden>Sign out of Google</button><button id="disconnect" type="button" disabled>Disconnect</button><button id="demo" type="button" disabled>Load sample data</button></div>
     <details class="manage-data"><summary>Manage local data</summary><p>Clearing removes your saved grades and Aspen session. Your records in Aspen are unaffected.</p><button id="clear" type="button" disabled>Clear local data</button></details>
   </dialog>

@@ -20,6 +20,8 @@ COOKIES = json.dumps([
     {"name": "VITHAR_CSRF", "value": "private-aspen-csrf", "domain": "aspen.darienps.org", "path": "/"},
 ])
 
+COOKIE_VALUES = {"appSession": "private-aspen-session", "csrf": "private-aspen-csrf"}
+
 
 class AccountTests(unittest.TestCase):
     def setUp(self):
@@ -58,7 +60,7 @@ class AccountTests(unittest.TestCase):
         self.assertFalse(state['signedIn'])
         self.assertIsNone(state['snapshot'])
         self.assertNotIn('csrfToken', state)
-        for route in ['/api/session', '/api/refresh', '/api/clear', '/api/demo', '/api/sign-in', '/auth/logout']:
+        for route in ['/api/session', '/api/refresh', '/api/clear', '/api/demo', '/auth/logout']:
             self.assertEqual(anonymous.post(route).status_code, 401)
         self.assertIn('alice-private-grades', alice.get('/api/state').json['snapshot']['classes'])
 
@@ -101,11 +103,9 @@ class AccountTests(unittest.TestCase):
         self.assertFalse(client.get('/api/state').json['signedIn'])
         self.assertEqual(client.post('/api/refresh').status_code, 401)
 
-    def test_extension_connection_requires_current_attempt_and_authenticated_aspen(self):
+    def test_manual_connection_requires_authenticated_aspen(self):
         client, store, headers = self.login()
-        self.assertEqual(client.post('/api/session', json={'cookies': COOKIES}, headers=headers).status_code, 409)
-        state = client.post('/api/sign-in', headers=headers).json
-        body = {'cookies': COOKIES, 'connectionAttempt': state['signIn']['attempt']}
+        body = {'cookieValues': COOKIE_VALUES}
         with patch('app.AspenClient') as factory:
             factory.return_value.api.side_effect = AspenError('Aspen session expired.')
             self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 401)
@@ -113,9 +113,26 @@ class AccountTests(unittest.TestCase):
         self.assertFalse(store.session_path.exists())
         with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
             self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 202)
-        self.assertEqual(client.get('/api/state').json['signIn']['phase'], 'connected')
-        self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 409)
+        self.assertTrue(client.get('/api/state').json['connected'])
         self.assertNotIn('private-aspen-session', json.dumps(client.get('/api/state').json))
+
+    def test_manual_values_keep_both_session_paths_and_optional_clearance(self):
+        client, store, headers = self.login()
+        values = {**COOKIE_VALUES, 'desktopSession': 'desktop-secret', 'clearance': 'clearance-secret'}
+        with patch('app.AspenClient') as factory, patch.object(store, 'start_refresh'):
+            def make_client(jar):
+                fixture = self.aspen_client()
+                fixture.session.cookies = jar
+                return fixture
+            factory.side_effect = make_client
+            self.assertEqual(client.post('/api/session', json={'cookieValues': values}, headers=headers).status_code, 202)
+        stored = json.loads(store.cipher.decrypt(store.session_path.read_bytes()))
+        cookies = {(cookie['name'], cookie['path']): cookie['value'] for cookie in stored['cookies']}
+        self.assertEqual(cookies[('JSESSIONID', '/app')], values['appSession'])
+        self.assertEqual(cookies[('JSESSIONID', '/aspen')], values['desktopSession'])
+        self.assertEqual(cookies[('VITHAR_CSRF', '/')], values['csrf'])
+        self.assertEqual(cookies[('cf_clearance', '/')], values['clearance'])
+        self.assertNotIn('desktop-secret', json.dumps(client.get('/api/state').json))
 
     def test_invalid_aspen_account_or_student_cannot_create_binding(self):
         _, store, _ = self.login()
@@ -134,17 +151,15 @@ class AccountTests(unittest.TestCase):
 
     def test_any_google_account_can_pair_with_authenticated_aspen_on_first_connection(self):
         client, store, headers = self.login('personal', email='personal@example.com')
-        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
-        body = {'cookies': COOKIES, 'connectionAttempt': attempt}
+        body = {'cookieValues': COOKIE_VALUES}
         with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
             self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 202)
         self.assertTrue(store.session_path.exists())
         with client.session_transaction() as state:
             self.assertEqual(self.accounts.account(state['login'])['student_oid'], 'alice-student')
         other, _, other_headers = self.login('alice')
-        other_attempt = other.post('/api/sign-in', headers=other_headers).json['signIn']['attempt']
         with patch('app.AspenClient', return_value=self.aspen_client()):
-            self.assertEqual(other.post('/api/session', json={**body, 'connectionAttempt': other_attempt}, headers=other_headers).status_code, 409)
+            self.assertEqual(other.post('/api/session', json=body, headers=other_headers).status_code, 409)
 
     def test_aspen_email_is_not_required_for_first_pairing(self):
         _, store, _ = self.login('unlisted', email='unlisted@example.com')
@@ -155,9 +170,8 @@ class AccountTests(unittest.TestCase):
 
     def test_linked_personal_account_session_restores_after_restart(self):
         client, store, headers = self.login('personal', email='personal@example.com')
-        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
         with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
-            self.assertEqual(client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': attempt}, headers=headers).status_code, 202)
+            self.assertEqual(client.post('/api/session', json={'cookieValues': COOKIE_VALUES}, headers=headers).status_code, 202)
         restarted = create_app(self.directory.name, self.config)
         try:
             fresh_store = restarted.extensions['account_store']('personal')
@@ -171,14 +185,12 @@ class AccountTests(unittest.TestCase):
 
     def test_disconnect_and_clear_do_not_allow_switching_students(self):
         client, store, headers = self.login('personal', email='personal@example.com')
-        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
         with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
-            self.assertEqual(client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': attempt}, headers=headers).status_code, 202)
+            self.assertEqual(client.post('/api/session', json={'cookieValues': COOKIE_VALUES}, headers=headers).status_code, 202)
         for action in ('/api/disconnect', '/api/clear'):
             with self.subTest(action=action):
                 self.assertEqual(client.post(action, headers=headers).status_code, 200)
-                attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
-                body = {'cookies': COOKIES, 'connectionAttempt': attempt}
+                body = {'cookieValues': COOKIE_VALUES}
                 with patch('app.AspenClient', return_value=self.aspen_client(student='another-student')):
                     self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 409)
                 self.assertFalse(store.session_path.exists())
@@ -229,9 +241,8 @@ class AccountTests(unittest.TestCase):
         self.assertTrue(store.needs_auth)
         self.assertFalse(store.session_path.exists())
 
-    def test_cancel_during_verification_cannot_save_a_session(self):
+    def test_disconnect_during_verification_cannot_save_a_session(self):
         client, store, headers = self.login()
-        attempt = client.post('/api/sign-in', headers=headers).json['signIn']['attempt']
         entered = threading.Event()
         finish = threading.Event()
         fixture = self.aspen_client()
@@ -243,13 +254,13 @@ class AccountTests(unittest.TestCase):
         def connect():
             worker_client = self.app.test_client()
             worker_client.set_cookie('betteraspen_session', client.get_cookie('betteraspen_session').value)
-            result.append(worker_client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': attempt}, headers=headers).status_code)
+            result.append(worker_client.post('/api/session', json={'cookieValues': COOKIE_VALUES}, headers=headers).status_code)
         with patch.object(store, 'verify_session', side_effect=verify):
             thread = threading.Thread(target=connect)
             thread.start()
             try:
                 self.assertTrue(entered.wait(2))
-                self.assertEqual(client.post('/api/sign-in/cancel', headers=headers).status_code, 200)
+                self.assertEqual(client.post('/api/disconnect', headers=headers).status_code, 200)
             finally:
                 finish.set()
                 thread.join(timeout=3)
@@ -259,9 +270,8 @@ class AccountTests(unittest.TestCase):
 
     def test_encrypted_aspen_session_and_google_login_survive_restart(self):
         client, store, headers = self.login()
-        state = client.post('/api/sign-in', headers=headers).json
         with patch('app.AspenClient', return_value=self.aspen_client()), patch.object(store, 'start_refresh'):
-            response = client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': state['signIn']['attempt']}, headers=headers)
+            response = client.post('/api/session', json={'cookieValues': COOKIE_VALUES}, headers=headers)
         self.assertEqual(response.status_code, 202)
         saved = demo_snapshot()
         saved.update(mode='live', student={'studentOid': 'alice-student', 'name': 'alice'})

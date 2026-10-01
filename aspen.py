@@ -25,6 +25,35 @@ class CookieImportError(ValueError):
     """A cookie-import error safe to display without including credentials."""
 
 
+def cookies_from_values(values):
+    """Build scoped Aspen cookies from manually entered values."""
+    if not isinstance(values, dict):
+        raise CookieImportError("Enter your Aspen cookie values.")
+    fields = {
+        "appSession": ("JSESSIONID", "/app", True),
+        "csrf": ("VITHAR_CSRF", "/", True),
+        "desktopSession": ("JSESSIONID", "/aspen", False),
+        "clearance": ("cf_clearance", "/", False),
+    }
+    cookies = []
+    for field, (name, path, required) in fields.items():
+        value = values.get(field, "")
+        if not isinstance(value, str):
+            raise CookieImportError(f"Enter a valid {name} value for {path}.")
+        value = value.strip()
+        if required and not value:
+            raise CookieImportError(f"Enter the {name} value for {path}.")
+        if len(value) > 8192 or any(ord(c) < 33 or ord(c) > 126 or c in ';,' for c in value):
+            raise CookieImportError(f"The {name} value for {path} is invalid. Copy only its value.")
+        if value:
+            cookies.append({"name": name, "value": value, "domain": "aspen.darienps.org",
+                            "path": path, "secure": True})
+    cookies.extend({"name": name, "value": value, "domain": "aspen.darienps.org",
+                    "path": "/", "secure": True}
+                   for name, value in (("deploymentId", "x2sis"), ("locale", "en_US")))
+    return cookies
+
+
 def parse_cookies(text):
     """Accept browser-export JSON or Netscape cookies, and keep only Aspen cookies."""
     import json
@@ -44,7 +73,7 @@ def parse_cookies(text):
                 continue
             fields = line.split("\t")
             if len(fields) != 7:
-                raise CookieImportError("Expected a Netscape cookie file or a JSON cookie array. In Cookie-Editor, choose Export → JSON.")
+                raise CookieImportError("Expected a Netscape cookie file or a JSON cookie array.")
             domain, _, path, secure, expires, name, value = fields
             try:
                 expiration = int(expires) or None

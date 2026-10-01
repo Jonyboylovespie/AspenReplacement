@@ -288,18 +288,50 @@ main {
   min-width: 0;
 }
 
-.topbar {
-  position: relative;
-  z-index: 1;
+.sync-drawer {
+  position: fixed;
+  top: 132px;
+  right: 0;
+  z-index: 20;
   display: flex;
-  width: max-content;
-  max-width: calc(100% - 76px);
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sync-toggle {
+  display: grid;
+  width: 44px;
+  min-height: 48px;
+  flex: 0 0 auto;
+  order: 2;
+  place-items: center;
+  padding: 0;
+  border-right: 0;
+  border-radius: 12px 0 0 12px;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.sync-toggle svg {
+  transition: transform 160ms ease;
+}
+
+.sync-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.topbar {
+  display: flex;
+  width: min(440px, calc(100vw - 68px));
+  max-height: calc(100dvh - 152px);
   flex-direction: column;
   gap: 10px;
-  margin: 18px 38px 0 auto;
+  overflow: auto;
+  margin: 0;
   padding: 16px 18px 12px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
   background: var(--surface);
   box-shadow: 0 5px 18px color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--muted);
@@ -1099,14 +1131,36 @@ dialog details {
   flex: 0 0 auto;
 }
 
-.sign-in-progress {
-  margin-top: 18px;
-  padding: 2px 16px 14px;
-  border-left: 4px solid var(--accent);
-  background: var(--tint);
+.cookie-form {
+  display: grid;
+  gap: 10px;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
 }
-
-.sign-in-progress button,
+.cookie-form label {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.cookie-form label span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.cookie-form input {
+  width: 100%;
+  min-width: 0;
+}
+.cookie-form p {
+  margin: 0 0 8px;
+  line-height: 1.6;
+}
+.cookie-form a {
+  color: var(--accent);
+  text-decoration: underline;
+}
 .manage-data button {
   font-size: 0.72rem;
 }
@@ -1280,6 +1334,9 @@ body[data-design='passing-period'] .course-grid {
 }
 
 body[data-design='passing-period'] .course-card {
+  --route-axis: -37px;
+  --station-size: 28px;
+  --course-gap: 14px;
   display: grid;
   min-height: 126px;
   grid-template-columns: 130px minmax(190px, 1.2fr) minmax(190px, 0.8fr) 180px;
@@ -1312,31 +1369,38 @@ body[data-design='passing-period'] .grade-none {
   --grade-color: #056f71;
 }
 
+/* The marker and both line segments share one axis at every breakpoint. */
 body[data-design='passing-period'] .course-card::before {
   position: absolute;
+  z-index: 1;
   top: 50%;
-  left: -51px;
-  width: 23px;
-  height: 23px;
-  border: 6px solid var(--route);
+  left: calc(var(--route-axis) - var(--station-size) / 2);
+  box-sizing: border-box;
+  width: var(--station-size);
+  height: var(--station-size);
+  border: 5px solid var(--route);
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--surface);
   content: '';
   transform: translateY(-50%);
 }
 
 body[data-design='passing-period'] .course-card::after {
   position: absolute;
-  top: calc(50% + 17px);
-  bottom: -51px;
-  left: -38px;
+  top: -1px;
+  bottom: calc(-1 * var(--course-gap) - 1px);
+  left: calc(var(--route-axis) - 2px);
   width: 4px;
   background: var(--route);
   content: '';
 }
 
+body[data-design='passing-period'] .course-card:first-child::after {
+  top: 50%;
+}
+
 body[data-design='passing-period'] .course-card:last-child::after {
-  display: none;
+  bottom: 50%;
 }
 
 body[data-design='passing-period'] .course-code,
@@ -1579,9 +1643,12 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
     border-width: 3px;
   }
 
+  .sync-drawer {
+    top: 146px;
+  }
+
   .topbar {
-    max-width: calc(100% - 48px);
-    margin-right: 24px;
+    max-height: calc(100dvh - 166px);
   }
 
   .page-content {
@@ -1637,12 +1704,13 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
   }
 
 
+  .sync-drawer {
+    top: 82px;
+  }
+
   .topbar {
-    width: calc(100% - 28px);
-    max-width: calc(100% - 28px);
-    margin: 14px 14px 0 auto;
+    max-height: calc(100dvh - 102px);
     padding: 14px 12px 10px;
-    border-radius: 22px;
   }
 
   .topbar-controls {
@@ -1778,16 +1846,8 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    margin: 0 0 14px 5px;
+    margin: 0 0 14px;
     padding: 20px;
-  }
-
-  body[data-design='passing-period'] .course-card::before {
-    left: -29px;
-  }
-
-  body[data-design='passing-period'] .course-card::after {
-    left: -16px;
   }
 
   body[data-design='passing-period'] .course-code {

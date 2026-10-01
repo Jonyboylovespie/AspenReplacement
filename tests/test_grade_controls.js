@@ -32,7 +32,7 @@ test("cached periods switch immediately offline and during refresh without fetch
   const snapshot = {mode: "live", syncedAt: "saved", ...current,
     gradePeriods: {"current:current": current, "previous:all": previous}};
   const state = {snapshot,
-    connected: false, needsAuth: true, syncing: false, signIn: {active: false}};
+    connected: false, needsAuth: true, syncing: false};
   context.setState(state);
   for (const id of ["grade-year", "grade-quarter"]) assert.equal(nodes.get(id).disabled, false);
   context.setState({...state, syncing: true});

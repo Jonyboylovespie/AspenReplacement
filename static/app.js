@@ -9,12 +9,6 @@ let busy = false;
 let feedLimit = 12;
 let selectedGradePeriod = null;
 let gradePeriodOwner = "";
-let connector = null;
-let automaticAccount = "";
-let capturing = false;
-let attemptedCookies = "";
-let openedAspen = false;
-let forcedAspen = false;
 
 function gradePeriodStorageKey() {
   return `aspen-grade-period:${gradePeriodOwner}`;
@@ -178,7 +172,6 @@ function classesWithGradesFirst(courses) {
 }
 
 function setState(state) {
-  const previousSignIn = currentState?.signIn?.phase;
   const previousPeriod = gradePeriod();
   currentState = {...state, snapshot: gradePeriodSnapshot(state.snapshot)};
   const snapshot = currentState.snapshot;
@@ -190,7 +183,6 @@ function setState(state) {
     state.error ? state.error : state.connected ? "Connected to Aspen. Automatically refreshes every minute." :
     snapshot ? "Showing saved data. Connect Aspen to get updates." : "Aspen is not connected.";
   $("updated").textContent = snapshot?.syncedAt ? `${demo ? "Sample loaded" : "Last successful sync"}: ${new Date(snapshot.syncedAt).toLocaleString()}${!demo && state.stale ? " (saved data; may be out of date)" : ""}` : "";
-  const signingIn = !!state.signIn?.active;
   const disabled = busy || state.syncing;
   const canChangePeriod = !!snapshot?.gradePeriods;
   $("grade-year").disabled = !canChangePeriod;
@@ -203,29 +195,22 @@ function setState(state) {
   $("grade-period-status").textContent = `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" :
     !canChangePeriod ? " · Refresh Aspen once to download all periods." : ""}`;
   $("home-grade-period").textContent = gradePeriodLabel(filters);
-  $("refresh").disabled = disabled || signingIn || !state.connected;
-  $("disconnect").disabled = disabled || (!state.connected && !signingIn);
+  $("refresh").disabled = disabled || !state.connected;
+  $("disconnect").disabled = disabled || !signedIn || !state.connected;
   for (const id of ["clear", "demo", "empty-demo"]) $(id).disabled = disabled || !signedIn;
-  $("google-sign-in").setAttribute("aria-disabled", String(disabled || signingIn));
-  $("google-sign-in").href = state.signedIn ? "#connect-aspen" : "/auth/google";
-  $("google-sign-in-label").textContent = !state.signedIn ? "Sign in with Google" : signingIn ? "Connecting Aspen…" : "Connect Aspen";
-  $("sign-in-progress").hidden = !signingIn;
-  $("sign-in-message").textContent = state.signIn?.message || "";
-  $("cancel-sign-in").disabled = busy || state.signIn?.phase === "cancelling";
-  if (signingIn) $("status").textContent = "Connecting your school account…";
-  if (signingIn) showError("");
-  else if (state.signIn?.error) showError(state.signIn.error);
-  else if (state.error) showError(state.error);
-  else if (previousSignIn === "error") showError("");
-  if (previousSignIn && previousSignIn !== "connected" && state.signIn?.phase === "connected") {
-    $("connection-dialog").close();
-    showError("");
+  $("google-connection").hidden = !!state.signedIn;
+  $("google-sign-in").setAttribute("aria-disabled", String(disabled || !state.googleConfigured));
+  $("cookie-form").hidden = !state.signedIn;
+  for (const id of ["app-session", "csrf-cookie", "desktop-session", "clearance-cookie", "connect-aspen"]) {
+    $(id).disabled = disabled || !state.signedIn;
   }
+  $("connect-aspen").textContent = busy ? "Connecting…" : "Save and connect";
+  if (state.error) showError(state.error);
   $("warnings").replaceChildren(...(snapshot?.warnings || []).map((warning) => element("li", warning)));
   $("notice").hidden = !(snapshot?.warnings?.length);
   $("notice-title").textContent = `${snapshot?.warnings?.length || 0} data note${snapshot?.warnings?.length === 1 ? "" : "s"}`;
   $("data-label").textContent = demo ? "Sample data" : state.syncing ? "Syncing…" : snapshot ? (state.stale ? "Saved data" : "Connected") : "Not connected";
-  $("sync-heading").textContent = signingIn ? "Connecting to Aspen…" : demo ? "You’re exploring sample data" :
+  $("sync-heading").textContent = demo ? "You’re exploring sample data" :
     state.syncing ? "Syncing with Aspen…" : !state.signedIn ? "Sign in to see your school day" : !snapshot ? "Aspen is not connected" :
     state.stale ? "Showing your saved snapshot" : "Synced with Aspen";
   $("empty").hidden = !!snapshot;
@@ -243,10 +228,7 @@ function setState(state) {
   }
   $("grade-year").value = filters.year;
   $("grade-quarter").value = filters.quarter;
-  if (state.signedIn && connector?.ready && state.needsAuth && !state.syncing && !signingIn && automaticAccount !== state.account.email) {
-    automaticAccount = state.account.email;
-    queueMicrotask(() => beginAspenConnection());
-  }
+
 }
 
 function featureStatus(data) {
@@ -514,10 +496,7 @@ $("google-sign-in").addEventListener("click", (event) => {
     showError("Google sign-in hasn't been configured on this server yet.");
     return;
   }
-  if (currentState?.signedIn) {
-    event.preventDefault();
-    beginAspenConnection();
-  }
+
 });
 $("logout").addEventListener("click", async () => {
   try {
@@ -525,7 +504,20 @@ $("logout").addEventListener("click", async () => {
     location.assign("/");
   } catch (error) { showError(error.message); }
 });
-$("cancel-sign-in").addEventListener("click", () => action("/api/sign-in/cancel"));
+$("cookie-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const cookieValues = {
+    appSession: $("app-session").value.trim(),
+    csrf: $("csrf-cookie").value.trim(),
+    desktopSession: $("desktop-session").value.trim(),
+    clearance: $("clearance-cookie").value.trim()
+  };
+  if (await action("/api/session", {cookieValues})) {
+    $("cookie-form").reset();
+    $("connection-dialog").close();
+  }
+});
+$("connection-dialog").addEventListener("close", () => $("cookie-form").reset());
 $("refresh").addEventListener("click", () => action("/api/refresh"));
 $("disconnect").addEventListener("click", () => action("/api/disconnect"));
 $("clear").addEventListener("click", () => action("/api/clear"));
@@ -625,59 +617,11 @@ route();
 async function poll() {
   try {
     if (!busy) setState(await api("/api/state"));
-    if (currentState?.signIn?.active && connector?.ready && !busy) captureAspen();
   }
   catch (error) { showError(`The server is unavailable: ${error.message}`); }
-  setTimeout(poll, currentState?.syncing || currentState?.signIn?.active ? 1000 : 5000);
+  setTimeout(poll, currentState?.syncing ? 1000 : 5000);
 }
 
-async function beginAspenConnection() {
-  if (!connector?.ready) {
-    $("connection-dialog").showModal();
-    showError("Install BetterAspen Connect and set its address once, then reload this page.");
-    return;
-  }
-  if (busy || currentState?.syncing || currentState?.signIn?.active) return;
-  attemptedCookies = "";
-  openedAspen = false;
-  forcedAspen = false;
-  if (await action("/api/sign-in")) captureAspen();
-}
-
-async function captureAspen() {
-  if (capturing || !currentState?.signIn?.active) return;
-  const attempt = currentState.signIn.attempt;
-  capturing = true;
-  try {
-    const result = await connector.capture({open: !openedAspen});
-    openedAspen = true;
-    if (currentState?.signIn?.attempt !== attempt || !currentState?.signIn?.active) return;
-    if (result.error) throw new Error(result.error);
-    if (!result.cookies) return;
-    const fingerprint = JSON.stringify(result.cookies);
-    if (fingerprint === attemptedCookies) return;
-    attemptedCookies = fingerprint;
-    try {
-      setState(await api("/api/session", {cookies: fingerprint, connectionAttempt: attempt}));
-      attemptedCookies = "";
-      showError("");
-    } catch (error) {
-      // Existing Aspen cookies can precede completion of school Google SSO.
-      // Open school sign-in once, then wait for a changed session.
-      if (!openedAspen || !currentState?.signIn?.active) throw error;
-      if (!forcedAspen) {
-        forcedAspen = true;
-        await connector.capture({open: true, force: true});
-      }
-      showError(error.message);
-    }
-  } catch (error) { showError(error.message); }
-  finally { capturing = false; }
-}
-
-connector = new AspenConnector(() => {
-  if (currentState) setState(currentState);
-});
 if (new URLSearchParams(location.search).get("login") === "failed") {
   $("connection-dialog").showModal();
   showError("Google sign-in couldn't finish. Try signing in again.");

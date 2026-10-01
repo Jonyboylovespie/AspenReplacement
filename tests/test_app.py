@@ -178,17 +178,15 @@ class StateTests(unittest.TestCase):
             client = app.test_client()
             token = client.get("/api/state").json["csrfToken"]
             exports = [
-                (json.dumps([{"name": "JSESSIONID", "value": "private-cookie-value",
-                              "domain": "aspen.darienps.org", "path": "/aspen"}]), "missing"),
-                ('[{"value": "private-cookie-value"', "incomplete or invalid"),
-                (json.dumps([{"name": "JSESSIONID", "value": "private-cookie-value",
-                              "domain": "aspen.darienps.org", "path": "/app",
-                              "expirationDate": "private-cookie-value"}]), "invalid expiration"),
+                ({"appSession": "", "csrf": "private-cookie-value"}, "Enter the JSESSIONID"),
+                ({"appSession": "private-cookie-value", "csrf": ""}, "Enter the VITHAR_CSRF"),
+                ({"appSession": "private-cookie-value;bad", "csrf": "csrf"}, "invalid"),
+                ({"appSession": [], "csrf": "private-cookie-value"}, "valid JSESSIONID"),
             ]
             with patch("app.AspenClient") as aspen_client:
                 for raw, expected in exports:
                     with self.subTest(expected=expected):
-                        response = client.post("/api/session", json={"cookies": raw},
+                        response = client.post("/api/session", json={"cookieValues": raw},
                                                headers={"X-CSRF-Token": token})
                         self.assertEqual(response.status_code, 400)
                         self.assertIn(expected, response.json["error"])

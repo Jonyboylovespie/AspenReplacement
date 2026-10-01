@@ -35,7 +35,7 @@ class RefreshRuntime:
             stores = list(self.stores.values())
         for store in stores:
             with store.lock:
-                ready = store.client is not None and not store.needs_auth and not store.sign_in.view()["active"]
+                ready = store.client is not None and not store.needs_auth
             if ready:
                 store.start_refresh()
 
@@ -51,6 +51,7 @@ class RefreshRuntime:
         with self.lock:
             stores = list(self.stores.values())
         for store in stores:
-            store.sign_in.cancel()
+            with store.lock:
+                store.connection_version += 1
         if self.thread:
             self.thread.join(timeout=5)

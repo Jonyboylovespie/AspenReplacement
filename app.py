@@ -24,9 +24,7 @@ import requests
 
 from accounts import AccountDatabase, private_file
 from runtime import RefreshRuntime
-from aspen import AspenClient, AspenError, AuthenticationRequired, CookieImportError, demo_snapshot, parse_cookies
-from sign_in import ExtensionSignIn, SignInManager
-from session_profiles import existing_profile, read_aspen_session
+from aspen import AspenClient, AspenError, AuthenticationRequired, CookieImportError, demo_snapshot, parse_cookies, cookies_from_values
 
 ROOT = Path(__file__).resolve().parent
 REFRESH_SECONDS = 60
@@ -49,9 +47,7 @@ class Store:
         self.cipher = cipher
         self.claim_student = claim_student
         self.session_path = self.directory / "aspen-session.enc"
-        self.sign_in = (ExtensionSignIn(self.lock) if cipher else
-                        SignInManager(self.directory / "aspen-browser", self.lock,
-                                      self.verify_session, self.connect_session))
+        self.connection_version = 0
         try:
             self.snapshot = json.loads(self.path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
@@ -75,7 +71,7 @@ class Store:
                     "needsAuth": self.needs_auth, "error": self.error,
                     "stale": self.needs_auth or self.error is not None,
                     "lastAttempt": self.last_attempt, "refreshSeconds": REFRESH_SECONDS,
-                    "csrfToken": self.csrf, "signIn": self.sign_in.view()}
+                    "csrfToken": self.csrf}
 
     def verify_session(self, raw):
         jar = parse_cookies(raw if isinstance(raw, str) else json.dumps(raw))
@@ -104,8 +100,7 @@ class Store:
             self.client = client
             self.needs_auth = False
             self.error = None
-            if isinstance(self.sign_in, ExtensionSignIn):
-                self.sign_in.connected()
+            self.connection_version += 1
             self.start_refresh()
 
     def persist_session(self, client, student_oid):
@@ -127,27 +122,21 @@ class Store:
                 os.unlink(temporary)
 
     def forget_session(self):
+        self.connection_version += 1
         self.session_path.unlink(missing_ok=True)
 
     def resume_session(self, refresh=True):
         """Restore the saved student's existing login without replacing accounts."""
         with self.lock:
             saved = self.snapshot
-            cancelled = self.sign_in.cancelled
-            if (self.syncing or self.sign_in.view()["active"]
-                    or (saved and saved.get("mode") != "live")
-                    or (not saved and not self.cipher)):
-                return False
-            if cancelled.is_set():
+            version = self.connection_version
+            if self.syncing or not self.cipher or (saved and saved.get("mode") != "live"):
                 return False
             if self.client is not None and not self.needs_auth:
                 return True
         try:
-            if self.cipher:
-                stored = json.loads(self.cipher.decrypt(self.session_path.read_bytes()))
-                raw = json.dumps(stored["cookies"])
-            else:
-                raw = read_aspen_session(existing_profile())
+            stored = json.loads(self.cipher.decrypt(self.session_path.read_bytes()))
+            raw = json.dumps(stored["cookies"])
             if not raw:
                 return False
             client, student = self.verify_session(raw)
@@ -157,10 +146,9 @@ class Store:
         with self.lock:
             # A late verification must not override a new login, clear, demo,
             # or a snapshot belonging to another student.
-            if (self.snapshot is not saved or self.syncing or self.sign_in.view()["active"]
-                    or self.sign_in.cancelled is not cancelled or cancelled.is_set()):
+            if self.snapshot is not saved or self.syncing or self.connection_version != version:
                 return False
-            expected = stored["studentOid"] if self.cipher else saved.get("student", {}).get("studentOid")
+            expected = stored["studentOid"]
             if student["studentOid"] != expected:
                 return False
             if self.client is not None and not self.needs_auth:
@@ -351,9 +339,9 @@ def create_app(directory=None, config=None):
     def javascript():
         return send_from_directory(ROOT / "static", "app.js")
 
-    @app.get("/connect.js")
-    def connector_script():
-        return send_from_directory(ROOT / "static", "connect.js")
+    @app.get("/sync-controls.js")
+    def sync_controls():
+        return send_from_directory(ROOT / "static", "sync-controls.js")
 
     @app.get("/styles.css")
     def stylesheet():
@@ -372,22 +360,7 @@ def create_app(directory=None, config=None):
         if not g.account:
             return jsonify(snapshot=None, signedIn=False, account=None, connected=False,
                            needsAuth=True, syncing=False, stale=True, error=None,
-                           signIn={"phase": "idle", "active": False, "url": "/auth/google"},
                            googleConfigured=bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]))
-        return jsonify(view())
-
-    @app.post("/api/sign-in")
-    def sign_in():
-        with store.lock:
-            if store.syncing:
-                return jsonify(error="Wait for the current sync to finish."), 409
-            if not store.sign_in.start():
-                return jsonify(error="A sign-in window is already open or closing."), 409
-        return jsonify(view()), 202
-
-    @app.post("/api/sign-in/cancel")
-    def cancel_sign_in():
-        store.sign_in.cancel()
         return jsonify(view())
 
     @app.post("/api/session")
@@ -396,15 +369,11 @@ def create_app(directory=None, config=None):
         if not isinstance(body, dict):
             return jsonify(error="Invalid session connection."), 400
         with store.lock:
-            remote = isinstance(store.sign_in, ExtensionSignIn)
-            if store.syncing or (store.sign_in.view()["active"] and not remote):
+            if store.syncing:
                 return jsonify(error="Wait for the current sync to finish."), 409
-            attempt = store.sign_in.attempt if remote else None
-            cancelled = store.sign_in.cancelled
-            if remote and (not store.sign_in.view()["active"] or body.get("connectionAttempt") != attempt):
-                return jsonify(error="Start Aspen connection again before connecting this session."), 409
+            version = store.connection_version
         try:
-            client, student = store.verify_session(body.get("cookies", ""))
+            client, student = store.verify_session(cookies_from_values(body.get("cookieValues")))
         except CookieImportError as error:
             return jsonify(error=str(error)), 400
         except (ValueError, TypeError, AttributeError):
@@ -414,9 +383,8 @@ def create_app(directory=None, config=None):
         except (KeyError, requests.RequestException):
             return jsonify(error="Aspen did not return a valid student account."), 400
         with store.lock:
-            if (store.syncing or store.sign_in.cancelled is not cancelled or cancelled.is_set()
-                    or (remote and (not store.sign_in.view()["active"] or store.sign_in.attempt != attempt))):
-                return jsonify(error="Connection was cancelled. Start Aspen connection again."), 409
+            if store.syncing or store.connection_version != version:
+                return jsonify(error="Connection changed. Submit the cookie values again."), 409
             try:
                 store.connect_session(client, student)
             except ValueError as error:
@@ -427,8 +395,6 @@ def create_app(directory=None, config=None):
 
     @app.post("/api/refresh")
     def refresh():
-        if store.sign_in.view()["active"]:
-            return jsonify(error="Finish or cancel Google sign-in before refreshing."), 409
         if store.client is None or store.needs_auth:
             return jsonify(error="Connect an Aspen session first."), 401
         store.start_refresh()
@@ -439,7 +405,6 @@ def create_app(directory=None, config=None):
         with store.lock:
             if store.syncing:
                 return jsonify(error="Wait for the current sync to finish."), 409
-            store.sign_in.cancel()
             store.forget_session()
             store.client = None
             store.needs_auth = False
@@ -474,7 +439,6 @@ def create_app(directory=None, config=None):
         with store.lock:
             if store.syncing:
                 return jsonify(error="Wait for the current sync to finish."), 409
-            store.sign_in.cancel()
             store.forget_session()
             store.client = None
             store.needs_auth = True
@@ -486,7 +450,6 @@ def create_app(directory=None, config=None):
         with store.lock:
             if store.syncing:
                 return jsonify(error="Wait for the current sync to finish."), 409
-            store.sign_in.cancel()
             store.forget_session()
             store.client = None
             store.needs_auth = True

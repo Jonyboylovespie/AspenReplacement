@@ -26,26 +26,23 @@ If HTTPS terminates at one trusted proxy, set `BETTERASPEN_PROXY_HOPS=1` and
 configure that proxy to preserve Host and forward the protocol. Otherwise leave
 it unset. `BETTERASPEN_BIND` can override the listening address/port.
 
-Install BetterAspen Connect once in each browser, open its options, and save
-this same BetterAspen address. Chromium: load `extension/chromium` as an
-unpacked extension using the browser's extension developer mode. Firefox/Zen:
-load `extension/firefox/manifest.json` using `about:debugging` for testing;
-normal Firefox installations require an AMO-signed extension for installation
-that survives browser restarts. The Firefox bundle is not signed or published.
-
-Then sign in with your school Google account on BetterAspen. The extension
-connects an existing Aspen session automatically, or opens school sign-in if
-needed. It reads only Aspen login cookies and sends them only to your configured
-BetterAspen origin. It never reads Google cookies. Browser extensions are
-needed only to connect/reconnect Aspen; after connecting, another device can
-view the same account's grades by signing into Google.
+Sign in with Google on BetterAspen, open Connection, and enter your Aspen
+cookie values. In a separate tab, sign into `https://aspen.darienps.org/app/`.
+Open browser developer tools, then Application → Cookies in Chrome or
+Storage → Cookies in Firefox, and select `aspen.darienps.org`.
+Copy the **value** of `JSESSIONID` with path `/app` and `VITHAR_CSRF` into
+the required fields. Open Aspen's desktop portal and copy the separate
+`JSESSIONID` with path `/aspen` to enable desktop averages, attendance, and
+recent activity. If `cf_clearance` is present, enter its value too.
+Click **Save and connect**. Re-enter fresh values when Aspen expires the session.
 
 Each Google account has separate saved grades and an encrypted Aspen session.
-The server matches Aspen's authenticated email to Google's verified email and
-binds that student to the account. If the current-user response uses a different
-email field, configure its exact path with `BETTERASPEN_ASPEN_EMAIL_FIELD`
-(e.g. `user.emailAddress` or `student.schoolEmail` after confirming that field).
-Connection fails closed if it cannot verify the identity.
+The server verifies the authenticated Aspen student before saving cookies.
+The first successful connection pairs that student with the Google account;
+the Google and school email addresses do not need to match. A paired account
+cannot switch to a different student, and a student cannot be paired with
+another Google account. Another device can view the same account's grades
+by signing into Google after the initial connection.
 
 Keep the state directory (default `.state`, configurable with
 `BETTERASPEN_STATE_DIR`) across restarts; it contains the account database,
@@ -61,9 +58,4 @@ Verification:
 ```sh
 .venv/bin/python -m unittest discover -s tests
 node --test tests/*.js
-BETTERASPEN_EXTENSION_TESTS=1 .venv/bin/python -m unittest discover -s tests -p test_extension_browser.py
 ```
-
-The extension browser checks use installed Playwright Chromium and local
-fixtures; they never sign into Google or Aspen. A real school-login check still
-requires your OAuth configuration and an active school account.
