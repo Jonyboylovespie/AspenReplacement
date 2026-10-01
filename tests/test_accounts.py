@@ -12,7 +12,7 @@ from joserfc.jwk import RSAKey
 import requests
 
 from app import create_app
-from aspen import AspenError, demo_snapshot, parse_cookies
+from aspen import AspenError, AuthenticationRequired, demo_snapshot, parse_cookies
 from runtime import RefreshRuntime
 
 COOKIES = json.dumps([
@@ -115,6 +115,95 @@ class AccountTests(unittest.TestCase):
             self.assertEqual(client.post('/api/session', json=body, headers=headers).status_code, 202)
         self.assertTrue(client.get('/api/state').json['connected'])
         self.assertNotIn('private-aspen-session', json.dumps(client.get('/api/state').json))
+
+    def test_saved_session_can_retry_after_access_denied(self):
+        client, store, headers = self.login()
+        fixture = self.aspen_client()
+        saved = {'mode': 'live', 'student': {'studentOid': 'alice-student'}, 'syncedAt': 'before outage'}
+        fresh = {**saved, 'syncedAt': 'after outage'}
+        with patch.object(store, 'start_refresh'):
+            store.connect_session(fixture, saved['student'])
+        store.save(saved)
+        fixture.sync.side_effect = [AuthenticationRequired('Aspen denied access.'), fresh]
+        store.refresh()
+        failed = client.get('/api/state').json
+        self.assertFalse(failed['connected'])
+        self.assertTrue(failed['canRetry'])
+        self.assertEqual(failed['snapshot'], saved)
+        self.assertEqual(client.post('/api/refresh').status_code, 403)
+        with patch.object(store, 'start_refresh', side_effect=store.refresh):
+            response = client.post('/api/refresh', headers=headers)
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json['connected'])
+        self.assertFalse(response.json['needsAuth'])
+        self.assertFalse(response.json['stale'])
+        self.assertIsNone(response.json['error'])
+        self.assertEqual(response.json['snapshot'], fresh)
+        self.assertEqual(fixture.sync.call_count, 2)
+        self.assertNotIn('private-aspen-session', json.dumps(response.json))
+
+    def test_failed_retries_keep_saved_data_and_session(self):
+        client, store, headers = self.login()
+        fixture = self.aspen_client()
+        saved = {'mode': 'live', 'student': {'studentOid': 'alice-student'}, 'syncedAt': 'before outage'}
+        with patch.object(store, 'start_refresh'):
+            store.connect_session(fixture, saved['student'])
+        store.save(saved)
+        encrypted = store.session_path.read_bytes()
+        fixture.sync.side_effect = AuthenticationRequired('Aspen denied access.')
+        with patch.object(store, 'start_refresh', side_effect=store.refresh):
+            for _ in range(2):
+                response = client.post('/api/refresh', headers=headers)
+                self.assertEqual(response.status_code, 202)
+                self.assertTrue(response.json['canRetry'])
+                self.assertTrue(response.json['needsAuth'])
+                self.assertTrue(response.json['stale'])
+                self.assertFalse(response.json['syncing'])
+                self.assertEqual(response.json['snapshot'], saved)
+        self.assertEqual(store.session_path.read_bytes(), encrypted)
+
+    def test_retry_restores_saved_session_after_failed_startup(self):
+        client, store, headers = self.login()
+        fixture = self.aspen_client()
+        saved = {'mode': 'live', 'student': {'studentOid': 'alice-student'}, 'syncedAt': 'before outage'}
+        store.persist_session(fixture, 'alice-student')
+        self.accounts.claim_student('alice', 'alice-student')
+        store.save(saved)
+        with patch.object(store, 'verify_session', side_effect=AspenError('Aspen is down.')):
+            self.assertFalse(store.resume_session())
+        self.assertIsNone(store.client)
+        self.assertTrue(client.get('/api/state').json['canRetry'])
+        fresh = {**saved, 'syncedAt': 'after outage'}
+        fixture.sync.return_value = fresh
+        with patch('app.AspenClient', return_value=fixture), patch.object(store, 'start_refresh', side_effect=store.refresh):
+            response = client.post('/api/refresh', headers=headers)
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json['connected'])
+        self.assertEqual(response.json['snapshot'], fresh)
+
+    def test_saved_session_retry_rejects_different_student(self):
+        client, store, headers = self.login()
+        store.persist_session(self.aspen_client(), 'alice-student')
+        saved = {'mode': 'live', 'student': {'studentOid': 'alice-student'}, 'syncedAt': 'before outage'}
+        store.save(saved)
+        fixture = self.aspen_client(student='bob-student')
+        with patch('app.AspenClient', return_value=fixture), patch.object(store, 'start_refresh', side_effect=store.refresh):
+            response = client.post('/api/refresh', headers=headers)
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json['needsAuth'])
+        self.assertEqual(response.json['snapshot'], saved)
+        self.assertIsNone(store.client)
+        fixture.sync.assert_not_called()
+
+    def test_refresh_cannot_restore_deleted_sessions(self):
+        client, store, headers = self.login()
+        for route in ('/api/disconnect', '/api/clear', '/api/demo'):
+            with self.subTest(route=route):
+                store.client = self.aspen_client()
+                store.persist_session(store.client, 'alice-student')
+                self.assertEqual(client.post(route, headers=headers).status_code, 200)
+                self.assertFalse(client.get('/api/state').json['canRetry'])
+                self.assertEqual(client.post('/api/refresh', headers=headers).status_code, 401)
 
     def test_manual_values_keep_both_session_paths_and_optional_clearance(self):
         client, store, headers = self.login()

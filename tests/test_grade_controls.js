@@ -6,6 +6,38 @@ const path = require("node:path");
 const vm = require("node:vm");
 const {test} = require("node:test");
 
+test("an access error keeps saved-session retry available and clears after recovery", () => {
+  const nodes = new Map();
+  const document = {
+    createElement() { return {}; },
+    getElementById(id) {
+      if (!nodes.has(id)) nodes.set(id, {value: "", setAttribute() {}, replaceChildren() {}});
+      return nodes.get(id);
+    },
+  };
+  const context = vm.createContext({document, localStorage: {getItem() { return null; }}});
+  const source = fs.readFileSync(path.join(__dirname, "../static/app.js"), "utf8");
+  vm.runInContext(source.slice(0, source.indexOf("function featureStatus(")), context);
+  const rejected = {signedIn: true, connected: false, needsAuth: true, canRetry: true,
+    syncing: false, error: "Aspen denied access.", snapshot: null};
+  context.setState(rejected);
+  assert.equal(nodes.get("saved-connection").hidden, false);
+  for (const id of ["retry-session", "refresh", "disconnect"]) assert.equal(nodes.get(id).disabled, false);
+  context.setState({...rejected, syncing: true});
+  for (const id of ["retry-session", "refresh", "disconnect"]) assert.equal(nodes.get(id).disabled, true);
+  assert.equal(nodes.get("retry-session").textContent, "Retrying saved session…");
+  context.setState({...rejected, connected: true, needsAuth: false, error: null});
+  assert.equal(nodes.get("saved-connection").hidden, true);
+  assert.equal(nodes.get("connection-error").hidden, true);
+  assert.equal(nodes.get("error").hidden, true);
+  context.setState({...rejected, canRetry: false, error: null});
+  assert.equal(nodes.get("saved-connection").hidden, true);
+  for (const id of ["retry-session", "refresh", "disconnect"]) assert.equal(nodes.get(id).disabled, true);
+  context.setState({...rejected, signedIn: false});
+  assert.equal(nodes.get("saved-connection").hidden, true);
+  assert.equal(nodes.get("retry-session").disabled, true);
+});
+
 test("cached periods switch immediately offline and during refresh without fetching", () => {
   const nodes = new Map();
   const document = {

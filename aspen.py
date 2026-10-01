@@ -311,7 +311,7 @@ class AspenClient:
                 return self.request("GET", target)
             raise AuthenticationRequired("Aspen redirected to login. Reconnect your session.")
         if response.status_code in {401, 403}:
-            raise AuthenticationRequired("Your Aspen session expired or access was denied. Reconnect Aspen.")
+            raise AuthenticationRequired("Aspen rejected this session or temporarily denied access. Retry your saved session, or reconnect Aspen if it keeps failing.")
         if not response.ok:
             raise AspenError(f"Aspen returned HTTP {response.status_code}. Your previous data is still available.")
         return response

@@ -72,10 +72,14 @@ class Store:
         with self.lock:
             return {"snapshot": self.snapshot, "syncing": self.syncing,
                     "connected": self.client is not None and not self.needs_auth,
+                    "canRetry": self.can_retry(),
                     "needsAuth": self.needs_auth, "error": self.error,
                     "stale": self.needs_auth or self.error is not None,
                     "lastAttempt": self.last_attempt, "refreshSeconds": REFRESH_SECONDS,
                     "csrfToken": self.csrf}
+
+    def can_retry(self):
+        return self.client is not None or (self.cipher is not None and self.session_path.is_file())
 
     def verify_session(self, raw):
         jar = parse_cookies(raw if isinstance(raw, str) else json.dumps(raw))
@@ -129,6 +133,13 @@ class Store:
         self.connection_version += 1
         self.session_path.unlink(missing_ok=True)
 
+    def load_session(self):
+        stored = json.loads(self.cipher.decrypt(self.session_path.read_bytes()))
+        client, student = self.verify_session(json.dumps(stored["cookies"]))
+        if student["studentOid"] != stored["studentOid"]:
+            raise AuthenticationRequired("Aspen returned a different student's session. Reconnect with your school account.")
+        return client
+
     def resume_session(self, refresh=True):
         """Restore the saved student's existing login without replacing accounts."""
         with self.lock:
@@ -139,11 +150,7 @@ class Store:
             if self.client is not None and not self.needs_auth:
                 return True
         try:
-            stored = json.loads(self.cipher.decrypt(self.session_path.read_bytes()))
-            raw = json.dumps(stored["cookies"])
-            if not raw:
-                return False
-            client, student = self.verify_session(raw)
+            client = self.load_session()
         except (AspenError, CookieImportError, ValueError, TypeError, KeyError, OSError,
                 InvalidToken, sqlite3.DatabaseError, requests.RequestException):
             return False
@@ -151,9 +158,6 @@ class Store:
             # A late verification must not override a new login, clear, demo,
             # or a snapshot belonging to another student.
             if self.snapshot is not saved or self.syncing or self.connection_version != version:
-                return False
-            expected = stored["studentOid"]
-            if student["studentOid"] != expected:
                 return False
             if self.client is not None and not self.needs_auth:
                 return True
@@ -170,11 +174,16 @@ class Store:
         try:
             with self.lock:
                 client = self.client
-                if not client:
+                if not self.can_retry():
+                    self.syncing = False
                     return False
                 self.syncing = True
                 self.last_attempt = datetime.now(timezone.utc).isoformat()
             try:
+                if client is None:
+                    client = self.load_session()
+                    with self.lock:
+                        self.client = client
                 filters = (self.snapshot or {}).get("gradeFilters", {})
                 year = year if year is not None else filters.get("year", "current")
                 quarter = quarter if quarter is not None else filters.get("quarter", "current")
@@ -204,7 +213,7 @@ class Store:
             except AspenError as error:
                 with self.lock:
                     self.error = str(error)
-            except (KeyError, TypeError, ValueError, OSError):
+            except (KeyError, TypeError, ValueError, OSError, InvalidToken):
                 with self.lock:
                     self.error = "Sync failed. Your last successful data remains available. Try refreshing again."
             finally:
@@ -380,6 +389,7 @@ def create_app(directory=None, config=None):
     def state():
         if not g.account:
             return jsonify(snapshot=None, signedIn=False, account=None, connected=False, aiChatEnabled=False,
+                           canRetry=False,
                            needsAuth=True, syncing=False, stale=True, error=None,
                            googleConfigured=bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]))
         return jsonify(view())
@@ -449,9 +459,10 @@ def create_app(directory=None, config=None):
 
     @app.post("/api/refresh")
     def refresh():
-        if store.client is None or store.needs_auth:
-            return jsonify(error="Connect an Aspen session first."), 401
-        store.start_refresh()
+        with store.lock:
+            if not store.can_retry():
+                return jsonify(error="Connect an Aspen session first."), 401
+            store.start_refresh()
         return jsonify(view()), 202
 
     @app.post("/api/demo")

@@ -34,7 +34,10 @@ Copy the **value** of `JSESSIONID` with path `/app` and `VITHAR_CSRF` into
 the required fields. Open Aspen's desktop portal and copy the separate
 `JSESSIONID` with path `/aspen` to enable desktop averages, attendance, and
 recent activity. If `cf_clearance` is present, enter its value too.
-Click **Save and connect**. Re-enter fresh values when Aspen expires the session.
+Click **Save and connect**. If Aspen goes down or denies access, use **Retry saved
+session** in Connection (or Refresh) to try the saved cookies again. Your last
+successful data stays available if the retry fails. Re-enter fresh values if
+Aspen continues to reject the session.
 
 Each Google account has separate saved grades and an encrypted Aspen session.
 The server verifies the authenticated Aspen student before saving cookies.

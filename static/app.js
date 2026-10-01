@@ -173,6 +173,7 @@ function classesWithGradesFirst(courses) {
 
 function setState(state) {
   const previousPeriod = gradePeriod();
+  const previousError = currentState?.error;
   currentState = {...state, snapshot: gradePeriodSnapshot(state.snapshot)};
   const snapshot = currentState.snapshot;
   const demo = snapshot?.mode === "demo";
@@ -195,8 +196,11 @@ function setState(state) {
   $("grade-period-status").textContent = `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" :
     !canChangePeriod ? " · Refresh Aspen once to download all periods." : ""}`;
   $("home-grade-period").textContent = gradePeriodLabel(filters);
-  $("refresh").disabled = disabled || !state.connected;
-  $("disconnect").disabled = disabled || !signedIn || !state.connected;
+  $("refresh").disabled = disabled || !signedIn || !state.canRetry;
+  $("disconnect").disabled = disabled || !signedIn || !state.canRetry;
+  $("saved-connection").hidden = !state.signedIn || !state.canRetry || state.connected;
+  $("retry-session").disabled = disabled || !state.signedIn || !state.canRetry;
+  $("retry-session").textContent = state.syncing ? "Retrying saved session…" : "Retry saved session";
   for (const id of ["clear", "demo", "empty-demo"]) $(id).disabled = disabled || !signedIn;
   $("google-connection").hidden = !!state.signedIn;
   $("google-sign-in").setAttribute("aria-disabled", String(disabled || !state.googleConfigured));
@@ -206,6 +210,7 @@ function setState(state) {
   }
   $("connect-aspen").textContent = busy ? "Connecting…" : "Save and connect";
   if (state.error) showError(state.error);
+  else if (previousError) showError("");
   $("warnings").replaceChildren(...(snapshot?.warnings || []).map((warning) => element("li", warning)));
   $("notice").hidden = !(snapshot?.warnings?.length);
   $("notice-title").textContent = `${snapshot?.warnings?.length || 0} data note${snapshot?.warnings?.length === 1 ? "" : "s"}`;
@@ -519,6 +524,7 @@ $("cookie-form").addEventListener("submit", async (event) => {
 });
 $("connection-dialog").addEventListener("close", () => $("cookie-form").reset());
 $("refresh").addEventListener("click", () => action("/api/refresh"));
+$("retry-session").addEventListener("click", () => action("/api/refresh"));
 $("disconnect").addEventListener("click", () => action("/api/disconnect"));
 $("clear").addEventListener("click", () => action("/api/clear"));
 async function loadDemo() {
