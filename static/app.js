@@ -356,7 +356,6 @@ function renderClasses() {
   const snapshot = currentState.snapshot;
   const courses = classesWithGradesFirst(snapshot.classes || []);
   $("home-title").textContent = snapshot.mode === "demo" ? "Your school day, at a glance." : "Welcome back";
-  $("class-total").textContent = `${courses.length} class${courses.length === 1 ? "" : "es"}`;
   if (!courses.some(course => course.studentScheduleOid === selectedClass)) selectedClass = courses[0]?.studentScheduleOid || "";
   $("class-select").replaceChildren();
   $("home-classes").replaceChildren();
@@ -610,7 +609,6 @@ $("mode-toggle").addEventListener("click", () => chooseColorMode(document.body.d
 document.querySelectorAll(".connection-open").forEach(button => button.addEventListener("click", () => $("connection-dialog").showModal()));
 $("close-connection").addEventListener("click", () => $("connection-dialog").close());
 $("class-search").addEventListener("input", renderClassCards);
-$("today").textContent = new Date().toLocaleDateString(undefined, {weekday: "long", month: "long", day: "numeric"});
 window.addEventListener("hashchange", () => route(true));
 route();
 
