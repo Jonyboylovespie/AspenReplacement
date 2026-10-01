@@ -1417,7 +1417,11 @@ body[data-design='passing-period'] .course-code {
 body[data-design='passing-period'] .course-bottom {
   margin: 0;
   padding: 0 0 0 18px;
-  border-left: 1px solid #b8d1d0;
+  border: 0;
+  background-image: linear-gradient(var(--line), var(--line));
+  background-position: left top;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
 }
 
 body[data-design='passing-period'] .course-bottom strong,
@@ -1556,10 +1560,6 @@ body[data-design='passing-period'] .activity-item:is(.grade-a, .grade-b, .grade-
 
 body[data-design='passing-period'][data-mode='dark'] .course-card {
   box-shadow: 0 5px 0 #183b4b;
-}
-
-body[data-design='passing-period'][data-mode='dark'] .course-bottom {
-  border-color: #365a68;
 }
 
 body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
@@ -1869,6 +1869,7 @@ body[data-design='passing-period'][data-mode='dark'] .attendance-summary {
     margin-top: auto;
     padding: 20px 0 0;
     border: 0;
+    background-image: none;
   }
 
   .detail-heading {
