@@ -35,7 +35,6 @@
     node("chat-status").hidden = !pending;
     node("chat-status").textContent = pending ? "Looking through your saved records…" : "";
     node("chat-form").setAttribute("aria-busy", String(pending));
-    root.querySelectorAll(".chat-suggestions button").forEach(button => { button.disabled = input.disabled; });
   }
 
   function error(message = "") {
@@ -76,10 +75,6 @@
     if (identity !== owner) { owner = identity; reset(); }
     root.hidden = !next.signedIn || !next.aiChatEnabled;
     if (root.hidden) open(false);
-    const snapshot = next.snapshot;
-    node("chat-context").textContent = !snapshot ? "Connect Aspen to ask about your records." :
-      snapshot.mode === "demo" ? "Using sample data, not your grades." :
-      `${gradePeriodLabel(gradePeriod())}${next.stale ? " · Saved data may be out of date" : " · Saved Aspen records"}`;
     controls();
   }
 
@@ -98,13 +93,12 @@
     // Keep complete pairs and bound history; older bubbles remain visible.
     const messages = [...history.slice(-20), {role: "user", content: question}];
     while (messages.length > 1 && messages.reduce((total, item) => total + item.content.length, 0) > 40000) messages.splice(0, 2);
-    const filters = gradePeriod();
     const timeout = setTimeout(() => requestController.abort(), 75000);
     try {
       const response = await fetch("/api/chat", {
         method: "POST", signal: requestController.signal,
         headers: {"Content-Type": "application/json", "X-CSRF-Token": state.csrfToken},
-        body: JSON.stringify({messages, ...(state.snapshot.gradePeriods ? {period: {year: filters.year, quarter: filters.quarter}} : {})}),
+        body: JSON.stringify({messages}),
       });
       const data = await response.json();
       if (version !== generation) return;
@@ -141,9 +135,6 @@
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing && matchMedia("(min-width: 601px)").matches) {
       event.preventDefault(); node("chat-form").requestSubmit();
     }
-  });
-  root.querySelectorAll(".chat-suggestions button").forEach(button => {
-    button.addEventListener("click", () => { input.value = button.textContent; controls(); input.focus(); });
   });
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && !panel.hidden && !node("connection-dialog").open) open(false, true);

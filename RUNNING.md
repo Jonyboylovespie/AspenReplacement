@@ -78,8 +78,19 @@ academic records. No Google or Aspen credentials are sent to the AI service.
 AI requests set `store=false`; the configured provider's own retention policies
 still apply. Conversations stay in the current browser tab and are cleared on
 reload, sign-out, or a change of student/data mode. New chat clears them manually.
-The assistant can use cached school years and quarters, and receives the period
-currently selected in the dashboard. One reply at a time per account is allowed,
+The assistant receives all saved school years and quarters, assignments,
+attendance records, and activity entries, regardless of the dashboard's selected
+grade period. Records that Aspen has not supplied are unavailable to the assistant.
+Requests use a lossless compact JSON format: repeated objects and long text are
+stored once and referenced, while tables declare their columns once and reuse
+common field values. All descriptions, dates, scores, flags, event occurrences,
+and differences between period views are preserved; no records are summarized
+or truncated. The model receives instructions for reading that format. Small
+payloads keep ordinary JSON if encoding overhead would make them larger.
+The 300,000-character guard applies to the compact records, rather than the
+uncompressed records. Stable academic data comes before changing sync metadata
+to improve reuse of unchanged prompt prefixes where the provider supports caching.
+One reply at a time per account is allowed,
 with at least three seconds between requests.
 
 ```sh

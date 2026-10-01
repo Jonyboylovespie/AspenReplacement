@@ -403,14 +403,10 @@ def create_app(directory=None, config=None):
         body = request.get_json(silent=True)
         try:
             messages = validate_messages(body)
-            selected = body.get("period")
-            if selected is not None and (not isinstance(selected, dict)
-                    or not all(isinstance(selected.get(key), str) for key in ("year", "quarter"))):
-                raise ChatError("Choose an available school year and quarter.")
             with store.lock:
                 if not store.snapshot:
                     return jsonify(error="Connect Aspen or load sample data before asking a question."), 409
-                context = academic_context(store.snapshot, store.needs_auth or store.error is not None, selected)
+                context = academic_context(store.snapshot, store.needs_auth or store.error is not None)
         except ChatError as error:
             return jsonify(error=str(error)), 400
         if not store.chat_lock.acquire(blocking=False):

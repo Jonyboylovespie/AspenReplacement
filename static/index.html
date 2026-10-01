@@ -71,15 +71,14 @@
         <div><h2 id="chat-title">Ask BetterAspen</h2></div>
         <div class="chat-heading-actions"><button id="chat-reset" type="button" aria-label="Start a new chat" title="New chat">↻</button><button id="chat-close" type="button" aria-label="Close AI chat">✕</button></div>
       </header>
-      <p id="chat-context" class="chat-context"></p>
       <div id="chat-messages" class="chat-messages" role="log" aria-label="Chat messages" aria-live="polite" aria-relevant="additions text">
-        <div id="chat-welcome" class="chat-welcome"><h3>A little clarity for your school day.</h3><p>Ask about an assignment, your averages, or a recorded absence.</p><div class="chat-suggestions"><button type="button">Which classes should I focus on?</button><button type="button">Help me understand my absences.</button></div></div>
+        <div id="chat-welcome" class="chat-welcome"><h3>Ask anything to our aspen AI</h3></div>
       </div>
       <p id="chat-status" class="chat-status" role="status" hidden></p>
       <p id="chat-error" class="chat-error" role="alert" hidden></p>
       <form id="chat-form" class="chat-form">
-        <label class="sr-only" for="chat-input">Ask about your grades or absences</label>
-        <textarea id="chat-input" rows="2" maxlength="8000" placeholder="Ask about your school day…" required></textarea>
+        <label class="sr-only" for="chat-input">Ask a question</label>
+        <textarea id="chat-input" rows="2" maxlength="8000" placeholder="Ask a question..." required></textarea>
         <button id="chat-send" class="primary" type="submit" aria-label="Send question"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7M12 5v14"/></svg></button>
       </form>
       <p class="chat-footnote">AI can make mistakes. Check important details in Aspen.<br>Your question and school records are sent to the AI service.</p>
