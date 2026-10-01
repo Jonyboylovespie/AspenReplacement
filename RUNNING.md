@@ -27,7 +27,7 @@ configure that proxy to preserve Host and forward the protocol. Otherwise leave
 it unset. `BETTERASPEN_BIND` can override the listening address/port.
 
 Sign in with Google on BetterAspen, open Connection, and enter your Aspen
-cookie values. In a separate tab, sign into `https://aspen.darienps.org/app/`.
+cookie values. In a separate tab, sign into `https://aspen.darienps.org/`.
 Open browser developer tools, then Application → Cookies in Chrome or
 Storage → Cookies in Firefox, and select `aspen.darienps.org`.
 Copy the **value** of `JSESSIONID` with path `/app` and `VITHAR_CSRF` into
