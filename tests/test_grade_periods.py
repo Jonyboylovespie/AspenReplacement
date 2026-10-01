@@ -26,15 +26,22 @@ class GradePeriodTests(unittest.TestCase):
             if path in {"/gradeTerm/student", "/gradeTerm/class/schedule"}:
                 return [{"oid": "term-q2", "gradeTermId": "Q2"}]
             if path == "/classes/term-q2":
-                return [{"studentScheduleOid": "schedule", "courseName": "Math", "percentageValue": 0}]
+                return [{"studentScheduleOid": "schedule", "courseName": "Math", "percentageValue": 0,
+                         "sectionTermAverage": "A+", "displayLetterGradesOnly": True, "letterGrade": "A+"}]
             if path == "/assignments":
-                return [{"oid": "assignment", "name": "Quiz"}]
+                return [{"oid": "assignment", "name": "Quiz", "letterGrade": "A+",
+                         "scoreLightModels": [{"score": "0", "letterGrade": "A+", "specialCode": "M"}]}]
             self.fail(f"Unexpected endpoint: {path}")
 
         with patch.object(client, "api", side_effect=api):
             data = client.sync_period(quarter="term-q2")
         self.assertEqual(data["classes"][0]["displayGrade"], "0")
         self.assertEqual(data["classes"][0]["gradeSource"], "Aspen API")
+        self.assertNotIn("A+", json.dumps(data))
+        self.assertNotIn("sectionTermAverage", data["classes"][0])
+        self.assertNotIn("displayLetterGradesOnly", data["classes"][0])
+        score = data["classes"][0]["assignments"][0]["scoreLightModels"][0]
+        self.assertEqual(score, {"score": "0", "specialCode": "M"})
         self.assertEqual(data["gradeFilters"]["quarter"], "term-q2")
         self.assertIn(("/classes/term-q2", {"studentOid": "student", "schoolOid": "school", "districtContext": "current"}), calls)
         self.assertIn(("/assignments", {"studentOid": "student", "studentScheduleOid": "schedule",

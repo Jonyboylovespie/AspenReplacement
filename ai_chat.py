@@ -2,6 +2,7 @@
 import requests
 
 from compact_records import FORMAT, FORMAT_GUIDE, compact_records, dumps
+from aspen import numeric_grade, numeric_summary
 
 MODEL = "gpt-6.1-sol"
 INSTRUCTIONS = """You are BetterAspen's school assistant. Help this student understand
@@ -21,6 +22,19 @@ them together or infer absence from missing records. Never invent grades, school
 policies, attendance codes, or missing records. Explain assumptions in hypothetical
 grade calculations and use reported category weights when available. If records
 cannot answer a question, say what is missing. Do not claim to change any records.
+Use only BetterAspen's letter scale for all grades and hypothetical targets.
+Only numeric grades are collected from Aspen; do not use any other letter scale.
+Minimum percentages, checked from highest to lowest (inclusive):
+A: 92.5; A−: 89.5; B+: 86.5; B: 82.5; B−: 79.5; C+: 76.5; C: 72.5;
+C−: 69.5; D+: 66.5; D: 62.5; D−: 59.5; below 59.5: F. There is no fallback A+.
+Use the unrounded percentage for cutoffs (92.49 is A−, even if displayed as 92.5%).
+Preserve special status codes. Missing or special scores are
+not zero; do not assign them fallback letters. Assignment percentages are earned
+points / possible points * 100, only with numeric scores and positive possible
+points; extra credit can exceed 100%. Use these cutoffs for hypothetical target
+letters, with reported category weights when available. Letter-only grades have
+no numeric value; do not infer a percentage. Describe this as the site's grading
+scale, not official school policy.
 Stay focused on school grades, assignments, and attendance.
 """
 
@@ -37,13 +51,19 @@ def academic_period(period):
     result = pick(period, "gradeFilters")
     result["classes"] = []
     for course in period.get("classes", []):
-        item = pick(course, "courseName courseNumber displayGrade gradeSource averageSummary")
+        item = pick(course, "courseName courseNumber gradeSource")
+        item["displayGrade"] = numeric_grade(course.get("displayGrade")) or numeric_grade(course.get("percentageValue")) or ""
+        item["averageSummary"] = numeric_summary(course.get("averageSummary", []))
         item["terms"] = [pick(term, "gradeTermId") for term in course.get("terms", [])]
         item["assignments"] = []
         for assignment in course.get("assignments", []):
             entry = pick(assignment, "name categoryName termName assignedDate dueDate totalPoints description")
-            entry["scores"] = [pick(score, "score specialCode behavior dropped exempt missing late incomplete comment")
-                               for score in assignment.get("scoreLightModels", [])]
+            entry["scores"] = []
+            for score in assignment.get("scoreLightModels", []):
+                values = pick(score, "specialCode behavior dropped exempt missing late incomplete comment")
+                if "score" in score:
+                    values["score"] = numeric_grade(score["score"])
+                entry["scores"].append(values)
             item["assignments"].append(entry)
         result["classes"].append(item)
     return result
@@ -62,9 +82,14 @@ def academic_context(snapshot, stale):
     result["attendance"] = {**pick(attendance, "available scope partial stale fetchedAt error summary"),
                             "records": [pick(row, "date code reason") for row in attendance.get("records", [])]}
     activity = snapshot.get("activityFeed", {})
+    events = []
+    for row in activity.get("events", []):
+        event = pick(row, "type date dateMeaning className assignmentName code period absent tardy dismissed excused")
+        if "grade" in row:
+            event["grade"] = numeric_grade(row["grade"], points=True)
+        events.append(event)
     result["activityFeed"] = {**pick(activity, "available scope partial stale fetchedAt error datePrecision attendanceEnabled gradesEnabled"),
-                              "events": [pick(row, "type date dateMeaning className assignmentName grade code period absent tardy dismissed excused")
-                                         for row in activity.get("events", [])]}
+                              "events": events}
     return result
 
 

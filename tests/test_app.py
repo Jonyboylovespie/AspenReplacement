@@ -46,7 +46,7 @@ class ScraperTests(unittest.TestCase):
         <table><tr><th>Description</th><th>Term&nbsp;Performance</th></tr>
         <tr><td><a href="javascript:doParamSubmit(2100, document.forms['classListForm'], 'SSC123')">Physics</a></td><td>97.9 A</td></tr></table></form>'''
         _, form, grades = read_class_list(html)
-        self.assertEqual(grades, {"SSC123": "97.9 A"})
+        self.assertEqual(grades, {"SSC123": "97.9"})
         values = dict(form_fields(form))
         self.assertEqual(values["org.apache.struts.taglib.html.TOKEN"], "live-token")
         self.assertEqual(values["termFilter"], "current")
@@ -59,6 +59,8 @@ class ScraperTests(unittest.TestCase):
         <tr><td>Gradebook average</td><td>97.9 A</td><td></td></tr></table>'''
         rows = read_average_summary(html)
         self.assertEqual(rows[1][0]["rowspan"], 2)
+        self.assertEqual(rows[2][-1]["text"], "97.5")
+        self.assertEqual(rows[-1][1]["text"], "97.9")
         self.assertEqual(rows[-1][-1]["text"], "")
 
     def attendance_html(self, rows="", count=0, paging=""):

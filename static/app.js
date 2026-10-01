@@ -101,7 +101,7 @@ function dateValue(value) {
 function classGradeDisplay(value) {
   const display = String(value ?? "").trim();
   if (!display) return "—";
-  // Only supplement numeric averages; keep Aspen's letters and special codes.
+  // Numeric averages come from Aspen; letters use the site's scale.
   if (!/^\d+(?:\.\d+)?\s*%?$/.test(display)) return display;
   const percentage = Number(display.replace(/\s*%$/, ""));
   // Half-point cutoffs follow the chart's whole-number grade bands.

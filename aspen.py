@@ -110,6 +110,51 @@ def text_of(tag):
     return " ".join(" ".join(tag.stripped_strings).split())
 
 
+def numeric_grade(value, *, points=False):
+    """Read only the numeric portion of a grade source, never its letter."""
+    if value is None or isinstance(value, bool):
+        return None
+    number = r"\d+(?:\.\d+)?"
+    pattern = rf"({number}\s*/\s*{number}|{number})" if points else rf"({number}\s*%?)"
+    match = re.match(pattern + r"(?=\s|$)", str(value).strip())
+    return match[1].strip() if match else None
+
+
+def numeric_summary(rows):
+    """Collect table labels, weights and numeric averages by column position."""
+    result, rowspans = [], {}
+    for row in rows:
+        cells, column = [], 0
+        for cell in row:
+            while rowspans.get(column, 0):
+                column += 1
+            text = cell.get("text", "")
+            label = column == 0 or cell.get("header") or text in {"Weight", "Avg", "Average"}
+            cells.append({**cell, "text": text if label else numeric_grade(text) or ""})
+            width = cell.get("colspan", 1)
+            for offset in range(width):
+                rowspans[column + offset] = cell.get("rowspan", 1)
+            column += width
+        rowspans = {col: remaining - 1 for col, remaining in rowspans.items() if remaining > 1}
+        result.append(cells)
+    return result
+
+
+def academic_fields(data, keys):
+    return {key: data[key] for key in keys.split() if key in data}
+
+
+def collect_assignment(item):
+    assignment = academic_fields(item, "oid name categoryName assignedDate dueDate totalPoints description")
+    assignment["scoreLightModels"] = []
+    for source in item.get("scoreLightModels", []):
+        score = academic_fields(source, "specialCode behavior dropped exempt missing late incomplete comment")
+        if "score" in source:
+            score["score"] = numeric_grade(source["score"])
+        assignment["scoreLightModels"].append(score)
+    return assignment
+
+
 def read_class_list(html):
     soup = BeautifulSoup(html, "html.parser")
     form = soup.find("form", attrs={"name": "classListForm"})
@@ -130,7 +175,7 @@ def read_class_list(html):
             if "Term Performance" in headings:
                 index = headings.index("Term Performance")
                 if index < len(cells):
-                    grades[match[0]] = text_of(cells[index])
+                    grades[match[0]] = numeric_grade(text_of(cells[index]))
     return soup, form, grades
 
 
@@ -167,7 +212,7 @@ def read_average_summary(html):
         if cells:
             rows.append([dict(text=text_of(c), header=c.name == "th",
                               rowspan=int(c.get("rowspan", 1)), colspan=int(c.get("colspan", 1))) for c in cells])
-    return rows
+    return numeric_summary(rows)
 
 
 def activity_date(value, pattern="%Y-%m-%d"):
@@ -245,7 +290,7 @@ def read_activity(xml, student_oid):
                      "dateMeaning": "posted" if grade else "attendance",
                      "className": item.get("classname", ""), "studentScheduleOid": item.get("sscoid"),
                      "assignmentOid": item.get("assignmentoid"), "termOid": item.get("gtmoid"),
-                     "assignmentName": item.get("assignmentname", ""), "grade": item.get("grade"),
+                     "assignmentName": item.get("assignmentname", ""), "grade": numeric_grade(item.get("grade"), points=True) if grade else None,
                      "code": item.get("code", ""), "period": item.get("period", "")}
             for flag in ("absent", "tardy", "dismissed", "excused"):
                 event[flag] = {"true": True, "false": False}.get(item.get(flag))
@@ -409,13 +454,13 @@ class AspenClient:
         result = []
         for course in classes:
             schedule = course["studentScheduleOid"]
-            terms = read("/gradeTerm/class/" + quote(schedule, safe=""))
+            terms = [academic_fields(term, "oid gradeTermId") for term in read("/gradeTerm/class/" + quote(schedule, safe=""))]
             assignments = []
             for term in terms:
                 items = read("/assignments", {"studentOid": student_oid, "studentScheduleOid": schedule,
                                  "gradeTermOid": term["oid"], "districtContextOid": year})
                 for item in items:
-                    assignments.append({**item, "termOid": term["oid"], "termName": term["gradeTermId"]})
+                    assignments.append({**collect_assignment(item), "termOid": term["oid"], "termName": term["gradeTermId"]})
             summary = []
             if use_desktop and shared is not None and schedule in shared["summaries"]:
                 summary = shared["summaries"][schedule]
@@ -430,10 +475,11 @@ class AspenClient:
                     warnings.append(f"{course['courseName']}: {error}")
                 if shared is not None:
                     shared["summaries"][schedule] = summary
-            fallback = course.get("sectionTermAverage") if course.get("displayLetterGradesOnly") else " ".join(
-                str(v) for v in [course.get("percentageValue"), course.get("sectionTermAverage")] if v not in (None, ""))
-            result.append({**course, "displayGrade": canonical.get(schedule, fallback or ""),
-                           "gradeSource": "Aspen desktop" if schedule in canonical else "Aspen API",
+            desktop = canonical.get(schedule)
+            percentage = numeric_grade(course.get("percentageValue"))
+            result.append({**academic_fields(course, "studentScheduleOid courseName courseNumber teacherName teacherEmail meetingTime"),
+                           "displayGrade": desktop if desktop is not None else percentage or "",
+                           "gradeSource": "Aspen desktop" if desktop else "Aspen API",
                            "terms": terms, "assignments": assignments, "averageSummary": summary})
         return {"student": {"name": student["name"], "studentOid": student_oid},
                 "classes": result, "attendance": attendance, "activityFeed": activity,
@@ -452,12 +498,12 @@ def demo_snapshot(year="current", quarter="current"):
 def demo_period(year="current", quarter="current"):
     """A fictional school week for comparing the dashboard designs."""
     subjects = [
-        ("Algebra II", "MATH-201", "Ms. Bennett", "93.4 A", "Quadratic functions", "Problem set: parabolas", "93.4", "46.7", "50"),
-        ("English Literature", "ENG-210", "Mr. Rivera", "88.5 B+", "Close reading: The Great Gatsby", "Chapter 4 annotations", "88.5", "17.7", "20"),
-        ("Chemistry", "SCI-220", "Dr. Chen", "91.2 A-", "Atomic structure lab", "Balancing equations", "91.2", "45.6", "50"),
-        ("U.S. History", "HIST-201", "Ms. Brooks", "95.0 A", "Primary source analysis", "The Federalist Papers", "95.0", "19", "20"),
-        ("Spanish III", "LANG-303", "Señora Torres", "89.0 B+", "Conversación: mi comunidad", "Vocabulary practice", "89.0", "44.5", "50"),
-        ("Visual Arts", "ART-110", "Mr. Ellis", "97.0 A+", "Still life study", "Sketchbook reflection", "97.0", "48.5", "50"),
+        ("Algebra II", "MATH-201", "Ms. Bennett", "93.4", "Quadratic functions", "Problem set: parabolas", "93.4", "46.7", "50"),
+        ("English Literature", "ENG-210", "Mr. Rivera", "88.5", "Close reading: The Great Gatsby", "Chapter 4 annotations", "88.5", "17.7", "20"),
+        ("Chemistry", "SCI-220", "Dr. Chen", "91.2", "Atomic structure lab", "Balancing equations", "91.2", "45.6", "50"),
+        ("U.S. History", "HIST-201", "Ms. Brooks", "95.0", "Primary source analysis", "The Federalist Papers", "95.0", "19", "20"),
+        ("Spanish III", "LANG-303", "Señora Torres", "89.0", "Conversación: mi comunidad", "Vocabulary practice", "89.0", "44.5", "50"),
+        ("Visual Arts", "ART-110", "Mr. Ellis", "97.0", "Still life study", "Sketchbook reflection", "97.0", "48.5", "50"),
     ]
     classes, events = [], []
     for i, (name, number, teacher, grade, assignment, practice, average, score, possible) in enumerate(subjects):
@@ -502,7 +548,7 @@ def demo_period(year="current", quarter="current"):
         course["terms"] = [{"oid": f"demo-q{i}", "gradeTermId": f"Q{i}"} for i in range(1, 5)]
         if year == "previous":
             course["courseName"] = course["courseName"].replace("Algebra II", "Algebra I").replace("Spanish III", "Spanish II")
-            course["displayGrade"] = "90.0 A−"
+            course["displayGrade"] = "90.0"
             for row in course["averageSummary"][1:]:
                 row[-1]["text"] = "90.0"
             for assignment in course["assignments"]:

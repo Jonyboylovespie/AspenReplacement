@@ -85,6 +85,7 @@
     error();
     welcome.hidden = true;
     const bubble = message("user", question);
+    input.value = "";
     pending = true;
     controls();
     const version = generation;
@@ -112,10 +113,10 @@
       if (typeof data.reply !== "string" || !data.reply.trim()) throw new Error("No reply arrived. Try again.");
       history = [...messages, {role: "assistant", content: data.reply}];
       message("assistant", data.reply);
-      input.value = "";
     } catch (failure) {
       if (version !== generation) return;
       bubble.remove();
+      input.value = question;
       error(failure.name === "AbortError" ? "The reply took too long. Your question is ready to retry." : failure.message);
     } finally {
       clearTimeout(timeout);

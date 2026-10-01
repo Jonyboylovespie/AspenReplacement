@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -97,6 +99,56 @@ class ChatTests(unittest.TestCase):
             self.assertNotIn("private-test-key", public)
             self.assertNotIn("https://ai.example", public)
             self.assertNotIn("bob@school.example", public)
+
+    @patch("ai_chat.requests.post")
+    def test_ai_receives_the_sites_fallback_grading_rules(self, upstream):
+        upstream.return_value = self.reply()
+        client, store, headers = self.login()
+        self.assertEqual(self.post(client, headers).status_code, 200)
+        instructions = upstream.call_args.kwargs["json"]["instructions"]
+        # Catch drift between the AI's scale and the dashboard's actual cutoffs.
+        source = (Path(__file__).resolve().parents[1] / "static/app.js").read_text()
+        helper = source.split("function classGradeDisplay(value) {", 1)[1].split("function letterGradeClass", 1)[0]
+        bands = re.findall(r'\[(\d+\.\d+), "([A-D][+−]?)"\]', helper)
+        self.assertEqual(len(bands), 11)
+        for minimum, letter in bands:
+            self.assertIn(f"{letter}: {minimum};", instructions)
+        for rule in ("below 59.5: F", "no fallback A+", "unrounded percentage",
+                     "92.49 is A−", "Use only BetterAspen's letter scale",
+                     "Only numeric grades are collected from Aspen", "Preserve special status codes",
+                     "not zero", "positive possible", "reported category weights",
+                     "not official school policy"):
+            self.assertIn(rule, instructions)
+
+    @patch("ai_chat.requests.post")
+    def test_ai_collects_only_numeric_grades_from_every_saved_source(self, upstream):
+        upstream.return_value = self.reply()
+        client, store, headers = self.login()
+        for period in store.snapshot["gradePeriods"].values():
+            for course in period["classes"]:
+                course["displayGrade"] = "82.49 A+"
+                course["sectionTermAverage"] = "A+"
+                course["averageSummary"] = [
+                    [{"text": "Category", "header": True}, {"text": "Average", "header": True}],
+                    [{"text": "Assessments"}, {"text": "82.49 A+"}],
+                    [{"text": "Practice"}, {"text": "A+"}]]
+                for assignment in course["assignments"]:
+                    assignment["scoreLightModels"] = [{"score": "10 A+", "letterGrade": "A+"}]
+        store.snapshot["activityFeed"]["events"] = [
+            {"type": "grade", "grade": "10 / 20 A+"}, {"type": "grade", "grade": "A+"}]
+        self.assertEqual(self.post(client, headers).status_code, 200)
+        context = sent_context(upstream)
+        self.assertNotIn("A+", json.dumps(context))
+        for period in context["gradePeriods"].values():
+            for course in period["classes"]:
+                self.assertEqual(course["displayGrade"], "82.49")
+                self.assertEqual(course["averageSummary"][1][1]["text"], "82.49")
+                self.assertEqual(course["averageSummary"][2][1]["text"], "")
+                for assignment in course["assignments"]:
+                    self.assertEqual(assignment["scores"], [{"score": "10"}])
+        self.assertEqual([event["grade"] for event in context["activityFeed"]["events"]], ["10 / 20", None])
+        # Collection does not rewrite or clean the saved source in place.
+        self.assertEqual(store.snapshot["gradePeriods"]["previous:all"]["classes"][0]["displayGrade"], "82.49 A+")
 
     @patch("ai_chat.requests.post")
     def test_all_periods_and_followups_ignore_dashboard_selection(self, upstream):
