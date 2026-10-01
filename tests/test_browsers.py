@@ -43,7 +43,7 @@ class BrowserPreferenceTests(unittest.TestCase):
                 default_browser()
 
     def test_explicit_browser_override_takes_priority(self):
-        with patch.dict(os.environ, {"BETTERASSPEN_BROWSER": "/usr/bin/firefox"}), \
+        with patch.dict(os.environ, {"BETTERASPEN_BROWSER": "/usr/bin/firefox"}), \
                 patch("browsers.shutil.which", return_value="/usr/bin/firefox"), patch("browsers.subprocess.run") as query:
             self.assertEqual(default_browser().engine, "firefox")
             query.assert_not_called()

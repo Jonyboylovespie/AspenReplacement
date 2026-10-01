@@ -22,7 +22,7 @@ from browsers import BrowserChoice
 from session_profiles import ExistingBrowserLogin
 
 
-@unittest.skipUnless(os.environ.get("BETTERASSPEN_BROWSER_TESTS") == "1", "Set BETTERASSPEN_BROWSER_TESTS=1 to run browser integration checks.")
+@unittest.skipUnless(os.environ.get("BETTERASPEN_BROWSER_TESTS") == "1", "Set BETTERASPEN_BROWSER_TESTS=1 to run browser integration checks.")
 class BrowserLoginTests(unittest.TestCase):
     def setUp(self):
         # Use an isolated Store, including its cache and sign-in profile.

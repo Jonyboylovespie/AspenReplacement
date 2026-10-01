@@ -14,7 +14,7 @@ from browsers import default_browser
 
 
 def existing_profile():
-    configured = os.environ.get("BETTERASSPEN_FIREFOX_PROFILE")
+    configured = os.environ.get("BETTERASPEN_FIREFOX_PROFILE")
     if configured:
         path = Path(configured).expanduser()
         if path.is_dir():
@@ -30,7 +30,7 @@ def existing_profile():
     elif "librewolf" in name:
         roots = [home / ".librewolf", home / ".var/app/io.gitlab.librewolf-community/.librewolf"]
     else:
-        raise ValueError("Automatic connection from an existing browser profile currently supports Zen and Firefox. Open BetterASSpen in one of those browsers.")
+        raise ValueError("Automatic connection from an existing browser profile currently supports Zen and Firefox. Open BetterAspen in one of those browsers.")
     for root in roots:
         parser = configparser.ConfigParser(interpolation=None)
         parser.read([root / "profiles.ini", root / "installs.ini"], encoding="utf-8")
@@ -55,7 +55,7 @@ def persistent_cookies(profile):
         return []
     # Firefox can hold an exclusive database lock. Read a short-lived snapshot,
     # including its WAL, without touching the browser's database or lock files.
-    with tempfile.TemporaryDirectory(prefix="betterasspen-session-") as directory:
+    with tempfile.TemporaryDirectory(prefix="betteraspen-session-") as directory:
         target = Path(directory) / "cookies.sqlite"
         for suffix in ("", "-wal"):
             source = profile / ("cookies.sqlite" + suffix)

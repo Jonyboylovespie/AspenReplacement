@@ -12,11 +12,11 @@ class EnvironmentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / '.env').write_text(
-                'BETTERASSPEN_PUBLIC_URL=https://aspen.jonyserver.ddnsfree.com\n'
+                'BETTERASPEN_PUBLIC_URL=https://aspen.jonyserver.ddnsfree.com\n'
                 'GOOGLE_CLIENT_ID=fixture-client\n'
                 'GOOGLE_CLIENT_SECRET=fixture$literal-secret\n')
             environment = {key: value for key, value in os.environ.items()
-                           if not key.startswith(('GOOGLE_', 'BETTERASSPEN_'))}
+                           if not key.startswith(('GOOGLE_', 'BETTERASPEN_'))}
             environment['GOOGLE_CLIENT_SECRET'] = 'exported-fixture-secret'
             with patch.dict(os.environ, environment, clear=True), patch('app.ROOT', root):
                 app = create_app(root / 'state', {'START_REFRESH': False})
@@ -31,7 +31,7 @@ class EnvironmentTests(unittest.TestCase):
             root = Path(directory)
             (root / '.env').write_text('GOOGLE_CLIENT_SECRET=fixture-${MISSING_VALUE}\n')
             environment = {key: value for key, value in os.environ.items()
-                           if not key.startswith(('GOOGLE_', 'BETTERASSPEN_'))}
+                           if not key.startswith(('GOOGLE_', 'BETTERASPEN_'))}
             with patch.dict(os.environ, environment, clear=True), patch('app.ROOT', root):
                 app = create_app(root / 'state', {'START_REFRESH': False})
                 self.assertEqual(app.config['GOOGLE_CLIENT_SECRET'], 'fixture-${MISSING_VALUE}')

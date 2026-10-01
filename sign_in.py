@@ -99,12 +99,12 @@ def stop_browser(process):
 
 
 def browser_executable():
-    configured = os.environ.get("BETTERASSPEN_BROWSER")
+    configured = os.environ.get("BETTERASPEN_BROWSER")
     if configured:
         executable = shutil.which(configured)
         if executable:
             return executable
-        raise SignInError("The configured sign-in browser was not found. Check BETTERASSPEN_BROWSER and try again.")
+        raise SignInError("The configured sign-in browser was not found. Check BETTERASPEN_BROWSER and try again.")
     for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge"):
         executable = shutil.which(name)
         if executable:
@@ -154,7 +154,7 @@ class BrowserLogin:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            raise SignInError("The sign-in browser support is missing. Install the project's requirements and restart BetterASSpen.") from None
+            raise SignInError("The sign-in browser support is missing. Install the project's requirements and restart BetterAspen.") from None
         self.profile.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.profile, 0o700)
         with socket.socket() as listener:
@@ -178,7 +178,7 @@ class BrowserLogin:
             launch_deadline = time.monotonic() + 30
             while not cancelled.is_set():
                 if process.poll() is not None or time.monotonic() >= launch_deadline:
-                    raise SignInError("The sign-in browser couldn't open. Close any earlier BetterASSpen sign-in window and try again.")
+                    raise SignInError("The sign-in browser couldn't open. Close any earlier BetterAspen sign-in window and try again.")
                 try:
                     response = requests.get(debugger_url + "/json/version", timeout=0.5)
                     if response.ok:
@@ -239,7 +239,7 @@ class BrowserLogin:
             from websockets.sync.client import connect
             from websockets.exceptions import InvalidHandshake
         except ImportError:
-            raise SignInError("Firefox sign-in support is missing. Install the project's requirements and restart BetterASSpen.") from None
+            raise SignInError("Firefox sign-in support is missing. Install the project's requirements and restart BetterAspen.") from None
         profile = self.profile / "firefox"
         profile.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(profile, 0o700)

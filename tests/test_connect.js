@@ -21,7 +21,7 @@ test('extension bridge rejects replies from other origins and unrequested IDs', 
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/connect.js'), 'utf8') + '\nconst connector = new AspenConnector(onReady);', context);
   const hello = messages[0].message;
-  const send = (origin, data, source = window) => listener({origin, source, data: {source: 'betterasspen-connect', ...data}});
+  const send = (origin, data, source = window) => listener({origin, source, data: {source: 'betteraspen-connect', ...data}});
   send('https://evil.example', {type: 'ready', id: hello.id});
   send('http://192.168.1.50:5173', {type: 'ready', id: 'wrong'});
   assert.equal(ready, false);

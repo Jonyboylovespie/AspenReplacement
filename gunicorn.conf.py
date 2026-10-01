@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False, interpolate=False)
 
-bind = os.environ.get("BETTERASSPEN_BIND", "0.0.0.0:5173")
+bind = os.environ.get("BETTERASPEN_BIND", "0.0.0.0:5173")
 # Account stores and the refresh coordinator live in this single process.
 workers = 1
 worker_class = "gthread"

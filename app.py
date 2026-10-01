@@ -235,13 +235,13 @@ def create_app(directory=None, config=None):
     if not (config and config.get("TESTING")):
         load_dotenv(ROOT / ".env", override=False, interpolate=False)
     app = Flask(__name__, static_folder=None)
-    public_url = os.environ.get("BETTERASSPEN_PUBLIC_URL", "").rstrip("/")
+    public_url = os.environ.get("BETTERASPEN_PUBLIC_URL", "").rstrip("/")
     app.config.update(
         MAX_CONTENT_LENGTH=512 * 1024,
         PUBLIC_URL=public_url,
         GOOGLE_CLIENT_ID=os.environ.get("GOOGLE_CLIENT_ID", ""),
         GOOGLE_CLIENT_SECRET=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-        SESSION_COOKIE_NAME="betterasspen_session",
+        SESSION_COOKIE_NAME="betteraspen_session",
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=public_url.startswith("https://"),
@@ -255,17 +255,17 @@ def create_app(directory=None, config=None):
         parsed = urlsplit(public)
         if (parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username
                 or parsed.password or parsed.path or parsed.query or parsed.fragment):
-            raise ValueError("BETTERASSPEN_PUBLIC_URL must be a web origin, such as https://grades.example.com")
+            raise ValueError("BETTERASPEN_PUBLIC_URL must be a web origin, such as https://grades.example.com")
     if not config or "SESSION_COOKIE_SECURE" not in config:
         app.config["SESSION_COOKIE_SECURE"] = public.startswith("https://")
-    directory = Path(directory or os.environ.get("BETTERASSPEN_STATE_DIR", ROOT / ".state"))
+    directory = Path(directory or os.environ.get("BETTERASPEN_STATE_DIR", ROOT / ".state"))
     accounts = AccountDatabase(directory)
     app.secret_key = private_file(directory / "web-secret", secrets.token_bytes(32))
     cipher = Fernet(private_file(directory / "session-key", Fernet.generate_key()))
     runtime = RefreshRuntime(REFRESH_SECONDS, auto_resume=app.config["START_REFRESH"])
     app.extensions["accounts"] = accounts
     app.extensions["refresh_runtime"] = runtime
-    proxy_hops = int(os.environ.get("BETTERASSPEN_PROXY_HOPS", "0"))
+    proxy_hops = int(os.environ.get("BETTERASPEN_PROXY_HOPS", "0"))
     if proxy_hops:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=proxy_hops, x_host=proxy_hops)
     oauth = OAuth(app)
@@ -293,7 +293,7 @@ def create_app(directory=None, config=None):
     def protect_accounts():
         public = app.config["PUBLIC_URL"]
         if public and request.host != urlsplit(public).netloc:
-            return jsonify(error="Use the configured BetterASSpen address."), 403
+            return jsonify(error="Use the configured BetterAspen address."), 403
         origin = request.headers.get("Origin")
         if origin and origin != (public or request.host_url.rstrip("/")):
             return jsonify(error="Cross-origin requests are disabled."), 403

@@ -586,7 +586,7 @@ function route(focus = false) {
     else link.removeAttribute("aria-current");
   });
   const label = view === "detail" ? selectedCourse()?.courseName : {home: "Home", grades: "Grades", attendance: "Attendance"}[view];
-  document.title = `BetterASSpen · ${label}`;
+  document.title = `BetterAspen · ${label}`;
   if (focus) { $("main").focus({preventScroll: true}); window.scrollTo(0, 0); }
 }
 
@@ -634,7 +634,7 @@ async function poll() {
 async function beginAspenConnection() {
   if (!connector?.ready) {
     $("connection-dialog").showModal();
-    showError("Install BetterASSpen Connect and set its address once, then reload this page.");
+    showError("Install BetterAspen Connect and set its address once, then reload this page.");
     return;
   }
   if (busy || currentState?.syncing || currentState?.signIn?.active) return;

@@ -1,4 +1,4 @@
-"""Run with BETTERASSPEN_EXTENSION_TESTS=1; uses Chromium and local fixtures."""
+"""Run with BETTERASPEN_EXTENSION_TESTS=1; uses Chromium and local fixtures."""
 import json
 import logging
 import os
@@ -17,7 +17,7 @@ from app import create_app
 from aspen import demo_snapshot
 
 
-@unittest.skipUnless(os.environ.get('BETTERASSPEN_EXTENSION_TESTS') == '1', 'Set BETTERASSPEN_EXTENSION_TESTS=1 to run the actual extension in Chromium.')
+@unittest.skipUnless(os.environ.get('BETTERASPEN_EXTENSION_TESTS') == '1', 'Set BETTERASPEN_EXTENSION_TESTS=1 to run the actual extension in Chromium.')
 class ExtensionBrowserTests(unittest.TestCase):
     def test_google_login_connects_existing_aspen_session_automatically(self):
         self.run_flow(existing_session=True)

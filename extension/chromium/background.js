@@ -5,9 +5,9 @@ const ALLOWED = new Set(["JSESSIONID", "VITHAR_CSRF", "deploymentId", "locale", 
 const SIGN_IN = ASPEN + "/aspen-login/?deploymentId=x2sis&districtIdSSO=%2Adst&idpName=Aspen+Darien+Google+SAML";
 
 async function registerBridge(origin) {
-  await api.scripting.unregisterContentScripts({ids: ["betterasspen"]}).catch(() => {});
+  await api.scripting.unregisterContentScripts({ids: ["betteraspen"]}).catch(() => {});
   if (origin) await api.scripting.registerContentScripts([{
-    id: "betterasspen", matches: [origin + "/*"], js: ["bridge.js"], runAt: "document_start"
+    id: "betteraspen", matches: [origin + "/*"], js: ["bridge.js"], runAt: "document_start"
   }]);
 }
 
@@ -34,14 +34,14 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const {origin} = await api.storage.local.get("origin");
     if (message.type === "configure" && sender.url === api.runtime.getURL("options.html")) {
       const url = new URL(message.origin);
-      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Use your BetterASSpen web address.");
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Use your BetterAspen web address.");
       const allowed = await api.permissions.contains({origins: [url.origin + "/*"]});
-      if (!allowed) throw new Error("Allow access to your BetterASSpen address first.");
+      if (!allowed) throw new Error("Allow access to your BetterAspen address first.");
       await registerBridge(url.origin);
       await api.storage.local.set({origin: url.origin});
       return {ok: true};
     }
-    if (!sender.tab || !origin || new URL(sender.url).origin !== origin) throw new Error("Unrecognized BetterASSpen address.");
+    if (!sender.tab || !origin || new URL(sender.url).origin !== origin) throw new Error("Unrecognized BetterAspen address.");
     if (message.type === "capture") {
       const cookies = await collectCookies(sender.tab.cookieStoreId);
       if (message.open && (!cookies || message.force)) {

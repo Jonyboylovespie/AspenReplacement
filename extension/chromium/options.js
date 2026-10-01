@@ -6,11 +6,11 @@ document.querySelector("form").addEventListener("submit", async event => {
   const status = document.getElementById("status");
   try {
     const url = new URL(document.querySelector("input").value);
-    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) throw new Error("Enter your BetterASSpen web address.");
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) throw new Error("Enter your BetterAspen web address.");
     const granted = await api.permissions.request({origins: [url.origin + "/*"]});
     if (!granted) throw new Error("Website permission is needed to connect your account.");
     const result = await api.runtime.sendMessage({type: "configure", origin: url.origin});
     if (!result.ok) throw new Error(result.error);
-    status.textContent = "Saved. Open or reload BetterASSpen, then sign in with Google.";
+    status.textContent = "Saved. Open or reload BetterAspen, then sign in with Google.";
   } catch (error) { status.textContent = error.message; }
 });

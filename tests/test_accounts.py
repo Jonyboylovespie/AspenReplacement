@@ -82,10 +82,10 @@ class AccountTests(unittest.TestCase):
 
     def test_logout_revokes_a_copied_browser_session(self):
         client, _, headers = self.login()
-        cookie = client.get_cookie('betterasspen_session').value
+        cookie = client.get_cookie('betteraspen_session').value
         self.assertEqual(client.post('/auth/logout', headers=headers).status_code, 200)
         replay = self.app.test_client()
-        replay.set_cookie('betterasspen_session', cookie)
+        replay.set_cookie('betteraspen_session', cookie)
         self.assertFalse(replay.get('/api/state').json['signedIn'])
 
     def test_unverified_google_email_cannot_create_account(self):
@@ -164,7 +164,7 @@ class AccountTests(unittest.TestCase):
             with patch('app.AspenClient', return_value=self.aspen_client()):
                 self.assertTrue(fresh_store.resume_session(refresh=False))
             fresh_client = restarted.test_client()
-            fresh_client.set_cookie('betterasspen_session', client.get_cookie('betterasspen_session').value)
+            fresh_client.set_cookie('betteraspen_session', client.get_cookie('betteraspen_session').value)
             self.assertTrue(fresh_client.get('/api/state').json['connected'])
         finally:
             restarted.extensions['refresh_runtime'].stop()
@@ -242,7 +242,7 @@ class AccountTests(unittest.TestCase):
         result = []
         def connect():
             worker_client = self.app.test_client()
-            worker_client.set_cookie('betterasspen_session', client.get_cookie('betterasspen_session').value)
+            worker_client.set_cookie('betteraspen_session', client.get_cookie('betteraspen_session').value)
             result.append(worker_client.post('/api/session', json={'cookies': COOKIES, 'connectionAttempt': attempt}, headers=headers).status_code)
         with patch.object(store, 'verify_session', side_effect=verify):
             thread = threading.Thread(target=connect)
@@ -271,7 +271,7 @@ class AccountTests(unittest.TestCase):
         restarted = create_app(self.directory.name, self.config)
         try:
             fresh_client = restarted.test_client()
-            fresh_client.set_cookie('betterasspen_session', client.get_cookie('betterasspen_session').value)
+            fresh_client.set_cookie('betteraspen_session', client.get_cookie('betteraspen_session').value)
             self.assertTrue(fresh_client.get('/api/state').json['signedIn'])
             fresh_store = restarted.extensions['account_store']('alice')
             with patch('app.AspenClient', return_value=self.aspen_client()):

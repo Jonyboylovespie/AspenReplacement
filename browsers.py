@@ -50,13 +50,13 @@ def desktop_browser(desktop_id):
 
 
 def default_browser():
-    configured = os.environ.get("BETTERASSPEN_BROWSER")
+    configured = os.environ.get("BETTERASPEN_BROWSER")
     if configured:
         if configured.endswith(".desktop"):
             return desktop_browser(configured)
         executable = shutil.which(configured)
         if not executable:
-            raise ValueError("The configured sign-in browser was not found. Check BETTERASSPEN_BROWSER and try again.")
+            raise ValueError("The configured sign-in browser was not found. Check BETTERASPEN_BROWSER and try again.")
         return BrowserChoice((executable,), browser_engine(executable), Path(executable).name)
     if shutil.which("xdg-settings"):
         try:
