@@ -55,6 +55,30 @@ background refresh continues.
 
 Verification:
 
+AI chat is available only to accounts explicitly listed in
+`BETTERASPEN_AI_WHITELIST`, as comma-separated verified Google email addresses.
+An empty list grants nobody access. For example:
+
+```dotenv
+BETTERASPEN_AI_API_ENDPOINT=https://api.openai.com/v1/responses
+BETTERASPEN_AI_API_KEY=your-server-api-key
+BETTERASPEN_AI_WHITELIST=alice@school.example,bob@school.example
+```
+
+The endpoint is the full URL of an OpenAI Responses API compatible service;
+HTTPS is required except for localhost development. Requests use `gpt-6.1-sol`
+with low reasoning effort. The key, endpoint, and whitelist stay on the server.
+Restart Gunicorn after changing these settings. Until a key and whitelist are
+configured, nobody sees the chat button. The server checks access on every chat
+request, independently of button visibility, and sends only that account's saved
+academic records. No Google or Aspen credentials are sent to the AI service.
+AI requests set `store=false`; the configured provider's own retention policies
+still apply. Conversations stay in the current browser tab and are cleared on
+reload, sign-out, or a change of student/data mode. New chat clears them manually.
+The assistant can use cached school years and quarters, and receives the period
+currently selected in the dashboard. One reply at a time per account is allowed,
+with at least three seconds between requests.
+
 ```sh
 .venv/bin/python -m unittest discover -s tests
 node --test tests/*.js

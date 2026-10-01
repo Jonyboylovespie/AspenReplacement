@@ -229,6 +229,7 @@ function setState(state) {
   $("grade-year").value = filters.year;
   $("grade-quarter").value = filters.quarter;
 
+  globalThis.betterAspenChat?.update(currentState);
 }
 
 function featureStatus(data) {

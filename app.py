@@ -10,6 +10,7 @@ import signal
 import sqlite3
 import tempfile
 import threading
+import time
 from urllib.parse import urlsplit
 
 from flask import Flask, g, jsonify, redirect, request, send_from_directory, session
@@ -23,6 +24,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import requests
 
 from accounts import AccountDatabase, private_file
+from ai_chat import ChatError, academic_context, ask, validate_messages
 from runtime import RefreshRuntime
 from aspen import AspenClient, AspenError, AuthenticationRequired, CookieImportError, demo_snapshot, parse_cookies, cookies_from_values
 
@@ -38,6 +40,8 @@ class Store:
         self.path = self.directory / "snapshot.json"
         self.lock = threading.RLock()
         self.sync_lock = threading.Lock()
+        self.chat_lock = threading.Lock()
+        self.chat_last_attempt = 0
         self.client = None
         self.csrf = secrets.token_urlsafe(32)
         self.syncing = False
@@ -235,9 +239,17 @@ def create_app(directory=None, config=None):
         SESSION_COOKIE_SECURE=public_url.startswith("https://"),
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
         START_REFRESH=True,
+        AI_API_ENDPOINT=os.environ.get("BETTERASPEN_AI_API_ENDPOINT", "https://api.openai.com/v1/responses"),
+        AI_API_KEY=os.environ.get("BETTERASPEN_AI_API_KEY", ""),
+        AI_WHITELIST=os.environ.get("BETTERASPEN_AI_WHITELIST", ""),
     )
     if config:
         app.config.update(config)
+    ai_endpoint = urlsplit(app.config["AI_API_ENDPOINT"])
+    if (ai_endpoint.scheme not in {"https", "http"} or not ai_endpoint.netloc
+            or ai_endpoint.username or ai_endpoint.password or ai_endpoint.fragment
+            or (ai_endpoint.scheme == "http" and ai_endpoint.hostname not in {"localhost", "127.0.0.1", "::1"})):
+        raise ValueError("BETTERASPEN_AI_API_ENDPOINT must be HTTPS (or HTTP on localhost).")
     public = app.config["PUBLIC_URL"]
     if public:
         parsed = urlsplit(public)
@@ -273,8 +285,13 @@ def create_app(directory=None, config=None):
     app.extensions["account_store"] = account_store
     store = LocalProxy(lambda: g.aspen_store)
 
+    def chat_allowed():
+        whitelist = {email.strip().casefold() for email in app.config["AI_WHITELIST"].split(",") if email.strip()}
+        return bool(g.account and g.account["email"].casefold() in whitelist)
+
     def view():
         return {**store.view(), "account": {"email": g.account["email"], "name": g.account["name"]},
+                "aiChatEnabled": chat_allowed() and bool(app.config["AI_API_KEY"]),
                 "signedIn": True, "googleConfigured": bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"])}
 
     @app.before_request
@@ -343,6 +360,10 @@ def create_app(directory=None, config=None):
     def sync_controls():
         return send_from_directory(ROOT / "static", "sync-controls.js")
 
+    @app.get("/ai-chat.js")
+    def ai_chat_javascript():
+        return send_from_directory(ROOT / "static", "ai-chat.js")
+
     @app.get("/styles.css")
     def stylesheet():
         return send_from_directory(ROOT / "static", "styles.css")
@@ -358,10 +379,43 @@ def create_app(directory=None, config=None):
     @app.get("/api/state")
     def state():
         if not g.account:
-            return jsonify(snapshot=None, signedIn=False, account=None, connected=False,
+            return jsonify(snapshot=None, signedIn=False, account=None, connected=False, aiChatEnabled=False,
                            needsAuth=True, syncing=False, stale=True, error=None,
                            googleConfigured=bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]))
         return jsonify(view())
+
+    @app.post("/api/chat")
+    def chat():
+        if not chat_allowed():
+            return jsonify(error="AI chat is not enabled for this account."), 403
+        if not app.config["AI_API_KEY"]:
+            return jsonify(error="AI chat is not configured on the server."), 503
+        body = request.get_json(silent=True)
+        try:
+            messages = validate_messages(body)
+            selected = body.get("period")
+            if selected is not None and (not isinstance(selected, dict)
+                    or not all(isinstance(selected.get(key), str) for key in ("year", "quarter"))):
+                raise ChatError("Choose an available school year and quarter.")
+            with store.lock:
+                if not store.snapshot:
+                    return jsonify(error="Connect Aspen or load sample data before asking a question."), 409
+                context = academic_context(store.snapshot, store.needs_auth or store.error is not None, selected)
+        except ChatError as error:
+            return jsonify(error=str(error)), 400
+        if not store.chat_lock.acquire(blocking=False):
+            return jsonify(error="Wait for your current reply to finish."), 429
+        try:
+            if time.monotonic() - store.chat_last_attempt < 3:
+                return jsonify(error="Wait a few seconds before asking another question."), 429
+            store.chat_last_attempt = time.monotonic()
+            try:
+                reply = ask(app.config["AI_API_ENDPOINT"], app.config["AI_API_KEY"], messages, context)
+            except ChatError as error:
+                return jsonify(error=str(error)), 502
+            return jsonify(reply=reply)
+        finally:
+            store.chat_lock.release()
 
     @app.post("/api/session")
     def connect():
@@ -459,7 +513,7 @@ def create_app(directory=None, config=None):
 
     @app.errorhandler(413)
     def too_large(_):
-        return jsonify(error="The cookie export is too large."), 413
+        return jsonify(error="The chat request is too large." if request.path == "/api/chat" else "The cookie export is too large."), 413
 
     if app.config["START_REFRESH"]:
         # Restore every previously linked account after a server restart.

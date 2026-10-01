@@ -14,7 +14,10 @@ class EnvironmentTests(unittest.TestCase):
             (root / '.env').write_text(
                 'BETTERASPEN_PUBLIC_URL=https://aspen.jonyserver.ddnsfree.com\n'
                 'GOOGLE_CLIENT_ID=fixture-client\n'
-                'GOOGLE_CLIENT_SECRET=fixture$literal-secret\n')
+                'GOOGLE_CLIENT_SECRET=fixture$literal-secret\n'
+                'BETTERASPEN_AI_API_ENDPOINT=https://ai.example/v1/responses\n'
+                'BETTERASPEN_AI_API_KEY=fixture-ai-key\n'
+                'BETTERASPEN_AI_WHITELIST=alice@school.example\n')
             environment = {key: value for key, value in os.environ.items()
                            if not key.startswith(('GOOGLE_', 'BETTERASPEN_'))}
             environment['GOOGLE_CLIENT_SECRET'] = 'exported-fixture-secret'
@@ -24,6 +27,9 @@ class EnvironmentTests(unittest.TestCase):
                 self.assertEqual(app.config['GOOGLE_CLIENT_ID'], 'fixture-client')
                 self.assertEqual(app.config['GOOGLE_CLIENT_SECRET'], 'exported-fixture-secret')
                 self.assertTrue(app.config['SESSION_COOKIE_SECURE'])
+                self.assertEqual(app.config['AI_API_ENDPOINT'], 'https://ai.example/v1/responses')
+                self.assertEqual(app.config['AI_API_KEY'], 'fixture-ai-key')
+                self.assertEqual(app.config['AI_WHITELIST'], 'alice@school.example')
                 app.extensions['refresh_runtime'].stop()
 
     def test_dotenv_secret_values_are_not_interpolated(self):
