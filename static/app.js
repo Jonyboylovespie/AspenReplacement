@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 let currentState = null;
 let renderedSnapshot = null;
 let selectedClass = "";
+let selectedClassPeriod = "";
 let selectedTerm = "all";
 let busy = false;
 let feedLimit = 12;
@@ -37,6 +38,24 @@ function gradePeriod(snapshot = currentState?.snapshot) {
   return snapshot?.gradeFilters || {year: "current", quarter: "current",
     years: [{value: "current", label: "Current school year"}, {value: "previous", label: "Previous school year"}],
     quarters: [{value: "current", label: "Current quarter"}, {value: "all", label: "All quarters"}, ...terms.values()]};
+}
+
+function currentPeriodSnapshot(snapshot = currentState?.snapshot) {
+  if (!snapshot) return snapshot;
+  const period = snapshot.gradePeriods?.["current:current"];
+  if (period) return {...snapshot, ...period};
+  const filters = gradePeriod(snapshot);
+  if (filters.year === "current" && filters.quarter === "current") return snapshot;
+  // Older saved data may only contain a historical view. Never show it as current.
+  return {...snapshot, classes: [], gradeFilters: {...filters, year: "current", quarter: "current"}};
+}
+
+function isCurrentClassRoute() {
+  return location.hash.startsWith("#class/current/");
+}
+
+function detailSnapshot() {
+  return isCurrentClassRoute() ? currentPeriodSnapshot() : currentState?.snapshot;
 }
 
 function gradePeriodLabel(filters) {
@@ -265,7 +284,7 @@ function activityScore(item, course) {
 }
 
 function renderFeed() {
-  const snapshot = currentState?.snapshot;
+  const snapshot = currentPeriodSnapshot();
   const feed = snapshot?.activityFeed;
   const type = $("feed-type").value;
   const search = $("feed-search").value.trim().toLowerCase();
@@ -299,7 +318,7 @@ function renderFeed() {
     const titleText = item.assignmentName || item.className || labels[item.type];
     if (course) {
       const link = element("a", titleText);
-      link.href = classHref(course);
+      link.href = classHref(course, true);
       title.append(link);
     } else title.textContent = titleText;
     content.append(title, element("p", item.type === "grade" ? item.className :
@@ -351,23 +370,18 @@ function renderAttendance() {
   }
 }
 
-function classHref(course) {
-  return `#class/${encodeURIComponent(course.studentScheduleOid)}`;
+function classHref(course, currentPeriod = false) {
+  return `#class/${currentPeriod ? "current/" : ""}${encodeURIComponent(course.studentScheduleOid)}`;
 }
 
 function renderClasses() {
-  const snapshot = currentState.snapshot;
+  const snapshot = currentPeriodSnapshot();
   const courses = classesWithGradesFirst(snapshot.classes || []);
   $("home-title").textContent = snapshot.mode === "demo" ? "Your school day, at a glance." : "Welcome back";
-  if (!courses.some(course => course.studentScheduleOid === selectedClass)) selectedClass = courses[0]?.studentScheduleOid || "";
-  $("class-select").replaceChildren();
   $("home-classes").replaceChildren();
   for (const course of courses) {
-    const option = element("option", course.courseName);
-    option.value = course.studentScheduleOid;
-    $("class-select").append(option);
     const link = element("a");
-    link.href = classHref(course);
+    link.href = classHref(course, true);
     link.className = `mini-course ${letterGradeClass(course.displayGrade)}`;
     const info = element("div");
     info.append(element("strong", course.courseName), element("small", course.meetingTime || course.teacherName));
@@ -377,7 +391,6 @@ function renderClasses() {
     $("home-classes").append(link);
   }
   if (!courses.length) $("home-classes").append(element("p", "No current classes returned by Aspen."));
-  $("class-select").value = selectedClass;
   renderClassCards();
   renderDetails();
 }
@@ -406,17 +419,24 @@ function renderClassCards() {
 }
 
 function selectedCourse() {
-  return currentState?.snapshot?.classes?.find((course) => course.studentScheduleOid === selectedClass);
+  return detailSnapshot()?.classes?.find((course) => course.studentScheduleOid === selectedClass);
 }
 
 function renderDetails() {
+  const courses = classesWithGradesFirst(detailSnapshot()?.classes || []);
+  if (!courses.some(course => course.studentScheduleOid === selectedClass)) selectedClass = courses[0]?.studentScheduleOid || "";
+  $("class-select").replaceChildren(...courses.map(course => {
+    const option = element("option", course.courseName);
+    option.value = course.studentScheduleOid;
+    return option;
+  }));
   const course = selectedCourse();
   $("details-title").textContent = course?.courseName || "Class breakdown";
   $("course-grade").textContent = classGradeDisplay(course?.displayGrade);
   $("course-grade").className = letterGradeClass(course?.displayGrade);
   $("grade-source").textContent = course?.gradeSource ? `Source: ${course.gradeSource}` : "No average available";
   $("class-select").value = selectedClass;
-  $("course-info").textContent = course ? [course.courseNumber, course.teacherName, course.teacherEmail, gradePeriodLabel(gradePeriod())].filter(Boolean).join(" · ") : "No classes returned for this period.";
+  $("course-info").textContent = course ? [course.courseNumber, course.teacherName, course.teacherEmail, gradePeriodLabel(gradePeriod(detailSnapshot()))].filter(Boolean).join(" · ") : "No classes returned for this period.";
   const summary = course?.averageSummary || [];
   $("summary-table").hidden = !summary.length;
   $("summary-empty").hidden = !!summary.length;
@@ -532,7 +552,9 @@ async function loadDemo() {
 }
 $("demo").addEventListener("click", loadDemo);
 $("empty-demo").addEventListener("click", loadDemo);
-$("class-select").addEventListener("change", () => { location.hash = `class/${encodeURIComponent($("class-select").value)}`; });
+$("class-select").addEventListener("change", () => {
+  location.hash = classHref({studentScheduleOid: $("class-select").value}, isCurrentClassRoute());
+});
 $("term-select").addEventListener("change", () => { selectedTerm = $("term-select").value; renderAssignments(); });
 function changeGradePeriod(yearChanged) {
   const year = $("grade-year").value;
@@ -564,11 +586,16 @@ function route(focus = false) {
   let view = ["home", "grades", "attendance"].includes(hash) ? hash : "grades";
   if (hash.startsWith("class/")) {
     let id = "";
-    try { id = decodeURIComponent(hash.slice(6)); } catch { /* Invalid links return to the class list. */ }
-    if (currentState?.snapshot?.classes?.some(c => c.studentScheduleOid === id)) {
-      if (selectedClass !== id) {
+    const prefix = isCurrentClassRoute() ? "class/current/" : "class/";
+    try { id = decodeURIComponent(hash.slice(prefix.length)); } catch { /* Invalid links return to the class list. */ }
+    if (detailSnapshot()?.classes?.some(c => c.studentScheduleOid === id)) {
+      const filters = gradePeriod(detailSnapshot());
+      const period = `${filters.year}:${filters.quarter}`;
+      if (selectedClass !== id || selectedClassPeriod !== period) {
         selectedClass = id;
-        selectedTerm = ["current", "all"].includes(gradePeriod().quarter) ? "all" : gradePeriod().quarter;
+        selectedClassPeriod = period;
+        const quarter = filters.quarter;
+        selectedTerm = ["current", "all"].includes(quarter) ? "all" : quarter;
         $("assignment-search").value = "";
       }
       renderDetails();
