@@ -336,7 +336,6 @@ function renderAttendance() {
   const snapshot = currentState?.snapshot;
   const daily = snapshot?.attendance;
   $("attendance-status").textContent = featureStatus(daily) + (daily?.available ? ` ${(daily.records || []).length} records.` : "");
-  $("attendance-summary").textContent = daily?.summary || "";
   $("daily-attendance").replaceChildren();
   for (const item of daily?.records || []) {
     const row = element("tr");
