@@ -396,7 +396,7 @@ function renderClasses() {
 function renderClassCards() {
   const search = $("class-search").value.trim().toLowerCase();
   const courses = classesWithGradesFirst(currentState?.snapshot?.classes || []).filter(course =>
-    [course.courseName, course.courseNumber, course.teacherName].join(" ").toLowerCase().includes(search));
+    [course.courseName, course.teacherName].join(" ").toLowerCase().includes(search));
   $("classes").replaceChildren();
   $("class-empty").hidden = !!courses.length;
   $("class-empty").textContent = search ? "No classes match. Try a class name or teacher." : "No classes returned for this school year and quarter.";
@@ -404,16 +404,11 @@ function renderClassCards() {
     const card = element("a");
     card.className = `course-card ${letterGradeClass(course.displayGrade)}`;
     card.href = classHref(course);
-    if (course.courseNumber) {
-      const code = element("span", course.courseNumber);
-      code.className = "course-code";
-      card.append(code);
-    }
     const info = element("p", course.teacherName || "Teacher not listed");
     info.append(element("br"), element("span", course.meetingTime || ""));
     const bottom = element("div");
     bottom.className = "course-bottom";
-    bottom.append(element("strong", classGradeDisplay(course.displayGrade)), element("span", "View breakdown"));
+    bottom.append(element("strong", classGradeDisplay(course.displayGrade)));
     card.append(element("h3", course.courseName), info, bottom);
     $("classes").append(card);
   }
@@ -437,7 +432,7 @@ function renderDetails() {
   $("course-grade").className = letterGradeClass(course?.displayGrade);
   $("grade-source").textContent = course?.gradeSource ? `Source: ${course.gradeSource}` : "No average available";
   $("class-select").value = selectedClass;
-  $("course-info").textContent = course ? [course.courseNumber, course.teacherName, course.teacherEmail, gradePeriodLabel(gradePeriod(detailSnapshot()))].filter(Boolean).join(" · ") : "No classes returned for this period.";
+  $("course-info").textContent = course ? [course.teacherName, course.teacherEmail, gradePeriodLabel(gradePeriod(detailSnapshot()))].filter(Boolean).join(" · ") : "No classes returned for this period.";
   const summary = course?.averageSummary || [];
   $("summary-table").hidden = !summary.length;
   $("summary-empty").hidden = !!summary.length;

@@ -112,7 +112,7 @@ test("home stays current through grade changes, polling, reload, and class navig
     {value: "q2", label: "Q2"}];
   function period(year, quarter, name, grade, possible) {
     return {gradeFilters: {year, quarter, years, quarters}, classes: [{
-      studentScheduleOid: "shared-id", courseName: name, displayGrade: grade,
+      studentScheduleOid: "shared-id", courseName: name, courseNumber: "PRIVATE-101", displayGrade: grade,
       terms: [{oid: "q2", gradeTermId: "Q2"}],
       assignments: [{oid: "quiz", name: "Quiz", totalPoints: possible, termOid: "q2"}],
     }]};
@@ -140,12 +140,15 @@ test("home stays current through grade changes, polling, reload, and class navig
   assertCurrentHome();
   nodes.get("grade-quarter").value = "q2";
   context.changeGradePeriod(false);
-  assert.equal(nodes.get("classes").children[0].children[3].children[0].textContent, "70 C−");
+  const classCard = nodes.get("classes").children[0];
+  assert.equal(classCard.children.find(child => child.className === "course-bottom").children[0].textContent, "70 C−");
+  assert.equal(classCard.children.some(child => child.className === "course-code"), false);
   assertCurrentHome();
   // The same class ID opens the current grade from Home and Q2 from Grades.
   location.hash = nodes.get("classes").children[0].href;
   context.route();
   assert.equal(nodes.get("course-grade").textContent, "70 C−");
+  assert.doesNotMatch(nodes.get("course-info").textContent, /PRIVATE-101/);
   assert.equal(nodes.get("term-select").value, "q2");
   location.hash = nodes.get("home-classes").children[0].href;
   context.route();

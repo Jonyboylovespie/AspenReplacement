@@ -477,7 +477,7 @@ class AspenClient:
                     shared["summaries"][schedule] = summary
             desktop = canonical.get(schedule)
             percentage = numeric_grade(course.get("percentageValue"))
-            result.append({**academic_fields(course, "studentScheduleOid courseName courseNumber teacherName teacherEmail meetingTime"),
+            result.append({**academic_fields(course, "studentScheduleOid courseName teacherName teacherEmail meetingTime"),
                            "displayGrade": desktop if desktop is not None else percentage or "",
                            "gradeSource": "Aspen desktop" if desktop else "Aspen API",
                            "terms": terms, "assignments": assignments, "averageSummary": summary})
@@ -498,15 +498,15 @@ def demo_snapshot(year="current", quarter="current"):
 def demo_period(year="current", quarter="current"):
     """A fictional school week for comparing the dashboard designs."""
     subjects = [
-        ("Algebra II", "MATH-201", "Ms. Bennett", "93.4", "Quadratic functions", "Problem set: parabolas", "93.4", "46.7", "50"),
-        ("English Literature", "ENG-210", "Mr. Rivera", "88.5", "Close reading: The Great Gatsby", "Chapter 4 annotations", "88.5", "17.7", "20"),
-        ("Chemistry", "SCI-220", "Dr. Chen", "91.2", "Atomic structure lab", "Balancing equations", "91.2", "45.6", "50"),
-        ("U.S. History", "HIST-201", "Ms. Brooks", "95.0", "Primary source analysis", "The Federalist Papers", "95.0", "19", "20"),
-        ("Spanish III", "LANG-303", "Señora Torres", "89.0", "Conversación: mi comunidad", "Vocabulary practice", "89.0", "44.5", "50"),
-        ("Visual Arts", "ART-110", "Mr. Ellis", "97.0", "Still life study", "Sketchbook reflection", "97.0", "48.5", "50"),
+        ("Algebra II", "Ms. Bennett", "93.4", "Quadratic functions", "Problem set: parabolas", "93.4", "46.7", "50"),
+        ("English Literature", "Mr. Rivera", "88.5", "Close reading: The Great Gatsby", "Chapter 4 annotations", "88.5", "17.7", "20"),
+        ("Chemistry", "Dr. Chen", "91.2", "Atomic structure lab", "Balancing equations", "91.2", "45.6", "50"),
+        ("U.S. History", "Ms. Brooks", "95.0", "Primary source analysis", "The Federalist Papers", "95.0", "19", "20"),
+        ("Spanish III", "Señora Torres", "89.0", "Conversación: mi comunidad", "Vocabulary practice", "89.0", "44.5", "50"),
+        ("Visual Arts", "Mr. Ellis", "97.0", "Still life study", "Sketchbook reflection", "97.0", "48.5", "50"),
     ]
     classes, events = [], []
-    for i, (name, number, teacher, grade, assignment, practice, average, score, possible) in enumerate(subjects):
+    for i, (name, teacher, grade, assignment, practice, average, score, possible) in enumerate(subjects):
         oid = f"demo-class-{i}"
         summary = [
             [{"text": value, "header": True} for value in ["Category", "Weight", "Average"]],
@@ -525,7 +525,7 @@ def demo_period(year="current", quarter="current"):
              "assignedDate": "2026-10-26", "dueDate": "2026-11-02", "totalPoints": "10", "description": "Read the next unit introduction.",
              "scoreLightModels": []},
         ]
-        classes.append({"studentScheduleOid": oid, "courseName": name, "courseNumber": number, "teacherName": teacher,
+        classes.append({"studentScheduleOid": oid, "courseName": name, "teacherName": teacher,
                         "teacherEmail": "", "meetingTime": f"Period {i + 1}", "displayGrade": grade, "gradeSource": "Sample data",
                         "averageSummary": summary, "terms": [{"oid": "demo-q1", "gradeTermId": "Q1"}, {"oid": "demo-q2", "gradeTermId": "Q2"}],
                         "assignments": assignments})

@@ -41,7 +41,7 @@ def academic_period(period):
     result = pick(period, "gradeFilters")
     result["classes"] = []
     for course in period.get("classes", []):
-        item = pick(course, "courseName courseNumber gradeSource")
+        item = pick(course, "courseName gradeSource")
         item["displayGrade"] = numeric_grade(course.get("displayGrade")) or numeric_grade(course.get("percentageValue")) or ""
         item["averageSummary"] = numeric_summary(course.get("averageSummary", []))
         item["terms"] = [pick(term, "gradeTermId") for term in course.get("terms", [])]

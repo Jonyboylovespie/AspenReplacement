@@ -32,6 +32,19 @@ ROOT = Path(__file__).resolve().parent
 REFRESH_SECONDS = 60
 
 
+def remove_course_numbers(snapshot):
+    """Remove legacy course numbers from every saved grade period in place."""
+    if not snapshot:
+        return False
+    changed = False
+    for period in [snapshot, *snapshot.get("gradePeriods", {}).values()]:
+        for course in period.get("classes", []):
+            if "courseNumber" in course:
+                del course["courseNumber"]
+                changed = True
+    return changed
+
+
 class Store:
     def __init__(self, directory, cipher=None, claim_student=None):
         self.directory = Path(directory)
@@ -56,8 +69,11 @@ class Store:
             self.snapshot = json.loads(self.path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
             self.snapshot = None
+        if remove_course_numbers(self.snapshot):
+            self.save(self.snapshot)
 
     def save(self, snapshot):
+        remove_course_numbers(snapshot)
         fd, temp = tempfile.mkstemp(dir=self.directory)
         try:
             with os.fdopen(fd, "w") as file:
