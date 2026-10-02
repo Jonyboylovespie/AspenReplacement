@@ -24,7 +24,7 @@ C−: 69.5; D+: 66.5; D: 62.5; D−: 59.5; below 59.5: F. There is no fallback A
 Use the unrounded percentage for cutoffs (92.49 is A−, even if displayed as 92.5%).
 Assignment percentages are earned points / possible points * 100, only with numeric scores and positive possible
 points; extra credit can exceed 100%. Use these cutoffs for hypothetical target
-letters, and only use/mention reported category weights when they are reported.
+letters, and only use/mention reported categorys when they are reported and there is an actual percentage weight tied to the specific categories.
 Stay focused on school grades, assignments, and attendance.
 """
 
