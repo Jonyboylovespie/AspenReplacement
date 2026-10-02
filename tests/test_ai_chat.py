@@ -114,28 +114,28 @@ class ChatTests(unittest.TestCase):
         for minimum, letter in bands:
             self.assertIn(f"{letter}: {minimum};", instructions)
         for rule in ("below 59.5: F", "no fallback A+", "unrounded percentage",
-                     "92.49 is A−", "Use only BetterAspen's letter scale",
-                     "Only numeric grades are collected from Aspen", "Preserve special status codes",
-                     "not zero", "positive possible", "reported category weights",
-                     "not official school policy"):
+                     "92.49 is A−", "Never invent grades, school", "positive possible",
+                     "extra credit can exceed 100%", "Only use reported categories"):
             self.assertIn(rule, instructions)
 
     @patch("ai_chat.requests.post")
-    def test_ai_collects_only_numeric_grades_from_every_saved_source(self, upstream):
+    def test_ai_preserves_normalized_grades_from_every_saved_period(self, upstream):
         upstream.return_value = self.reply()
         client, store, headers = self.login()
         for period in store.snapshot["gradePeriods"].values():
             for course in period["classes"]:
-                course["displayGrade"] = "82.49 A+"
+                course["displayGrade"] = "82.49"
                 course["sectionTermAverage"] = "A+"
                 course["averageSummary"] = [
                     [{"text": "Category", "header": True}, {"text": "Average", "header": True}],
-                    [{"text": "Assessments"}, {"text": "82.49 A+"}],
-                    [{"text": "Practice"}, {"text": "A+"}]]
+                    [{"text": "Assessments"}, {"text": "82.49"}],
+                    [{"text": "Practice"}, {"text": ""}]]
                 for assignment in course["assignments"]:
-                    assignment["scoreLightModels"] = [{"score": "10 A+", "letterGrade": "A+"}]
+                    assignment["scoreLightModels"] = [{"score": "10", "letterGrade": "A+"},
+                                                       {"score": "0", "missing": True},
+                                                       {"score": None, "specialCode": "EX", "exempt": True}]
         store.snapshot["activityFeed"]["events"] = [
-            {"type": "grade", "grade": "10 / 20 A+"}, {"type": "grade", "grade": "A+"}]
+            {"type": "grade", "grade": "10 / 20"}, {"type": "grade", "grade": None}]
         self.assertEqual(self.post(client, headers).status_code, 200)
         context = sent_context(upstream)
         self.assertNotIn("A+", json.dumps(context))
@@ -145,10 +145,10 @@ class ChatTests(unittest.TestCase):
                 self.assertEqual(course["averageSummary"][1][1]["text"], "82.49")
                 self.assertEqual(course["averageSummary"][2][1]["text"], "")
                 for assignment in course["assignments"]:
-                    self.assertEqual(assignment["scores"], [{"score": "10"}])
+                    self.assertEqual(assignment["scores"], [{"score": "10"}, {"score": "0", "missing": True},
+                                                            {"score": None, "specialCode": "EX", "exempt": True}])
         self.assertEqual([event["grade"] for event in context["activityFeed"]["events"]], ["10 / 20", None])
-        # Collection does not rewrite or clean the saved source in place.
-        self.assertEqual(store.snapshot["gradePeriods"]["previous:all"]["classes"][0]["displayGrade"], "82.49 A+")
+        self.assertEqual(store.snapshot["gradePeriods"]["previous:all"]["classes"][0]["displayGrade"], "82.49")
 
     @patch("ai_chat.requests.post")
     def test_all_periods_and_followups_ignore_dashboard_selection(self, upstream):
@@ -159,10 +159,10 @@ class ChatTests(unittest.TestCase):
             {"role": "assistant", "content": "Let's review your classes."},
             {"role": "user", "content": "What about last year?"}]
         contexts = []
-        # Older browser tabs may still send a period; it must never restrict data.
         for selected in ({"year": "current", "quarter": "current"}, {"year": "previous", "quarter": "all"}):
+            store.snapshot.update(store.snapshot["gradePeriods"][f"{selected['year']}:{selected['quarter']}"])
             store.chat_last_attempt = 0
-            response = self.post(client, headers, period=selected, messages=messages)
+            response = self.post(client, headers, messages=messages)
             self.assertEqual(response.status_code, 200)
             contexts.append(sent_context(upstream))
         self.assertEqual(contexts[0], contexts[1])
@@ -174,15 +174,6 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(len(context["attendance"]["records"]), len(store.snapshot["attendance"]["records"]))
         self.assertEqual(len(context["activityFeed"]["events"]), len(store.snapshot["activityFeed"]["events"]))
         self.assertEqual(len(upstream.call_args.kwargs["json"]["input"]), 4)
-
-    @patch("ai_chat.requests.post")
-    def test_legacy_snapshot_keeps_its_academic_records(self, upstream):
-        upstream.return_value = self.reply()
-        client, store, headers = self.login()
-        del store.snapshot["gradePeriods"]
-        self.assertEqual(self.post(client, headers).status_code, 200)
-        context = sent_context(upstream)
-        self.assertEqual(context["gradePeriods"]["current:current"]["classes"][0]["courseName"], "Algebra II")
 
     @patch("ai_chat.requests.post")
     def test_validation_missing_data_and_missing_key(self, upstream):

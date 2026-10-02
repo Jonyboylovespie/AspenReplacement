@@ -22,32 +22,24 @@ function gradePeriodSnapshot(snapshot) {
     selectedGradePeriod = null;
     try { selectedGradePeriod = JSON.parse(localStorage.getItem(gradePeriodStorageKey())); } catch { /* Use the snapshot's default. */ }
   }
-  if (!snapshot?.gradePeriods) return snapshot;
-  const requested = selectedGradePeriod || snapshot.gradeFilters || {year: "current", quarter: "current"};
+  if (!snapshot) return snapshot;
+  const requested = selectedGradePeriod || snapshot.gradeFilters;
   const period = snapshot.gradePeriods[`${requested.year}:${requested.quarter}`] ||
     snapshot.gradePeriods[`${requested.year}:${requested.year === "previous" ? "all" : "current"}`] ||
     snapshot.gradePeriods["current:current"];
-  if (!period) return snapshot;
   selectedGradePeriod = {year: period.gradeFilters.year, quarter: period.gradeFilters.quarter};
   return {...snapshot, ...period};
 }
 
 function gradePeriod(snapshot = currentState?.snapshot) {
-  const terms = new Map((snapshot?.classes || []).flatMap(course =>
-    (course.terms || []).map(term => [term.oid, {value: term.oid, label: term.gradeTermId}])));
-  return snapshot?.gradeFilters || {year: "current", quarter: "current",
+  return snapshot ? snapshot.gradeFilters : {year: "current", quarter: "current",
     years: [{value: "current", label: "Current school year"}, {value: "previous", label: "Previous school year"}],
-    quarters: [{value: "current", label: "Current quarter"}, {value: "all", label: "All quarters"}, ...terms.values()]};
+    quarters: [{value: "current", label: "Current quarter"}, {value: "all", label: "All quarters"}]};
 }
 
 function currentPeriodSnapshot(snapshot = currentState?.snapshot) {
   if (!snapshot) return snapshot;
-  const period = snapshot.gradePeriods?.["current:current"];
-  if (period) return {...snapshot, ...period};
-  const filters = gradePeriod(snapshot);
-  if (filters.year === "current" && filters.quarter === "current") return snapshot;
-  // Older saved data may only contain a historical view. Never show it as current.
-  return {...snapshot, classes: [], gradeFilters: {...filters, year: "current", quarter: "current"}};
+  return {...snapshot, ...snapshot.gradePeriods["current:current"]};
 }
 
 function isCurrentClassRoute() {
@@ -196,7 +188,7 @@ function setState(state) {
   currentState = {...state, snapshot: gradePeriodSnapshot(state.snapshot)};
   const snapshot = currentState.snapshot;
   const demo = snapshot?.mode === "demo";
-  const signedIn = state.signedIn !== false;
+  const signedIn = state.signedIn;
   $("account-status").textContent = state.account ? `Signed in as ${state.account.email}` : "";
   $("logout").hidden = !state.signedIn;
   $("status").textContent = state.syncing ? "Syncing from Aspen…" : demo ? "Showing sample data." :
@@ -204,7 +196,7 @@ function setState(state) {
     snapshot ? "Showing saved data. Connect Aspen to get updates." : "Aspen is not connected.";
   $("updated").textContent = snapshot?.syncedAt ? `${demo ? "Sample loaded" : "Last successful sync"}: ${new Date(snapshot.syncedAt).toLocaleString()}${!demo && state.stale ? " (saved data; may be out of date)" : ""}` : "";
   const disabled = busy || state.syncing;
-  const canChangePeriod = !!snapshot?.gradePeriods;
+  const canChangePeriod = !!snapshot;
   $("grade-year").disabled = !canChangePeriod;
   $("grade-quarter").disabled = !canChangePeriod;
   const filters = gradePeriod();
@@ -212,8 +204,7 @@ function setState(state) {
     selectedTerm = ["current", "all"].includes(filters.quarter) ? "all" : filters.quarter;
     $("assignment-search").value = "";
   }
-  $("grade-period-status").textContent = `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" :
-    !canChangePeriod ? " · Refresh Aspen once to download all periods." : ""}`;
+  $("grade-period-status").textContent = `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" : ""}`;
   $("refresh").disabled = disabled || !signedIn || !state.canRetry;
   $("disconnect").disabled = disabled || !signedIn || !state.canRetry;
   $("saved-connection").hidden = !state.signedIn || !state.canRetry || state.connected;

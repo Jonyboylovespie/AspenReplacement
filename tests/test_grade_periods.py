@@ -79,42 +79,6 @@ class GradePeriodTests(unittest.TestCase):
             self.assertEqual(store.error, "Quarter unavailable.")
             self.assertFalse(store.syncing)
 
-    def test_grade_endpoint_demo_changes_year_and_quarter(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app = create_app(directory)
-            client = app.test_client()
-            headers = {"X-CSRF-Token": client.get("/api/state").json["csrfToken"]}
-            client.post("/api/demo", headers=headers)
-            response = client.post("/api/grades", json={"year": "previous", "quarter": "current"}, headers=headers)
-            self.assertEqual(response.status_code, 200)
-            snapshot = response.json["snapshot"]
-            self.assertEqual(snapshot["gradeFilters"]["year"], "previous")
-            self.assertEqual(snapshot["gradeFilters"]["quarter"], "all")
-            self.assertEqual(snapshot["classes"][0]["courseName"], "Algebra I")
-            response = client.post("/api/grades", json={"year": "previous", "quarter": "demo-q2"}, headers=headers)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json["snapshot"]["classes"][0]["displayGrade"], "")
-            self.assertEqual(response.json["snapshot"]["classes"][0]["assignments"][0]["termName"], "Q2")
-
-    def test_invalid_disconnected_and_conflicting_requests_keep_data(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app = create_app(directory)
-            client = app.test_client()
-            store = app.extensions["aspen_store"]
-            store.save(demo_snapshot())
-            saved = store.snapshot
-            headers = {"X-CSRF-Token": store.csrf}
-            for body in [{"year": "invalid", "quarter": "current"}, {"year": [], "quarter": "current"}, []]:
-                self.assertEqual(client.post("/api/grades", json=body, headers=headers).status_code, 400)
-                self.assertEqual(store.snapshot, saved)
-            self.assertEqual(client.post("/api/grades", json={"year": "current", "quarter": "current"}).status_code, 403)
-            store.snapshot["mode"] = "live"
-            store.syncing = True
-            with patch.object(store, "resume_session") as reconnect, patch.object(store, "start_refresh") as refresh:
-                self.assertEqual(client.post("/api/grades", json={"year": "previous", "quarter": "all"}, headers=headers).status_code, 200)
-                reconnect.assert_not_called()
-                refresh.assert_not_called()
-
     def test_refresh_keeps_old_cache_until_sync_completes(self):
         with tempfile.TemporaryDirectory() as directory:
             app = create_app(directory)
@@ -194,23 +158,6 @@ class GradePeriodTests(unittest.TestCase):
                 self.assertFalse(store.resume_session())
             self.assertIsNone(store.client)
             self.assertTrue(store.needs_auth)
-
-    def test_cached_grade_selection_works_offline_without_reconnecting(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app = create_app(directory)
-            store = app.extensions["aspen_store"]
-            snapshot = demo_snapshot()
-            snapshot["mode"] = "live"
-            store.save(snapshot)
-            with patch.object(store, "resume_session") as reconnect, patch.object(store, "start_refresh") as refresh:
-                response = app.test_client().post("/api/grades", json={"year": "previous", "quarter": "all"},
-                                                 headers={"X-CSRF-Token": store.csrf})
-            self.assertEqual(response.status_code, 200)
-            self.assertFalse(response.json["connected"])
-            self.assertEqual(response.json["snapshot"]["gradeFilters"]["year"], "previous")
-            self.assertEqual(response.json["snapshot"]["classes"][0]["courseName"], "Algebra I")
-            reconnect.assert_not_called()
-            refresh.assert_not_called()
 
     def test_full_sync_caches_both_years_and_reads_assignments_once(self):
         client = AspenClient(requests.cookies.RequestsCookieJar())

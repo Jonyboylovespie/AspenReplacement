@@ -2,7 +2,6 @@
 import requests
 
 from compact_records import FORMAT, FORMAT_GUIDE, compact_records, dumps
-from aspen import numeric_grade, numeric_summary
 
 MODEL = "gpt-6.1-sol"
 INSTRUCTIONS = """You are BetterAspen's school assistant. Help this student understand
@@ -42,17 +41,15 @@ def academic_period(period):
     result["classes"] = []
     for course in period.get("classes", []):
         item = pick(course, "courseName gradeSource")
-        item["displayGrade"] = numeric_grade(course.get("displayGrade")) or numeric_grade(course.get("percentageValue")) or ""
-        item["averageSummary"] = numeric_summary(course.get("averageSummary", []))
+        item["displayGrade"] = course.get("displayGrade", "")
+        item["averageSummary"] = course.get("averageSummary", [])
         item["terms"] = [pick(term, "gradeTermId") for term in course.get("terms", [])]
         item["assignments"] = []
         for assignment in course.get("assignments", []):
             entry = pick(assignment, "name categoryName termName assignedDate dueDate totalPoints description")
             entry["scores"] = []
             for score in assignment.get("scoreLightModels", []):
-                values = pick(score, "specialCode behavior dropped exempt missing late incomplete comment")
-                if "score" in score:
-                    values["score"] = numeric_grade(score["score"])
+                values = pick(score, "score specialCode behavior dropped exempt missing late incomplete comment")
                 entry["scores"].append(values)
             item["assignments"].append(entry)
         result["classes"].append(item)
@@ -61,11 +58,7 @@ def academic_period(period):
 
 def academic_context(snapshot, stale):
     periods = {key: academic_period(value)
-               for key, value in snapshot.get("gradePeriods", {}).items()}
-    # Include legacy snapshots too, or a snapshot period absent from the cache.
-    filters = snapshot.get("gradeFilters", {})
-    key = f"{filters.get('year', 'current')}:{filters.get('quarter', 'current')}"
-    periods.setdefault(key, academic_period(snapshot))
+               for key, value in snapshot["gradePeriods"].items()}
     result = {**pick(snapshot, "mode syncedAt warnings"), "stale": stale,
               "gradePeriods": periods}
     attendance = snapshot.get("attendance", {})
@@ -74,9 +67,7 @@ def academic_context(snapshot, stale):
     activity = snapshot.get("activityFeed", {})
     events = []
     for row in activity.get("events", []):
-        event = pick(row, "type date dateMeaning className assignmentName code period absent tardy dismissed excused")
-        if "grade" in row:
-            event["grade"] = numeric_grade(row["grade"], points=True)
+        event = pick(row, "type date dateMeaning className assignmentName grade code period absent tardy dismissed excused")
         events.append(event)
     result["activityFeed"] = {**pick(activity, "available scope partial stale fetchedAt error datePrecision attendanceEnabled gradesEnabled"),
                               "events": events}

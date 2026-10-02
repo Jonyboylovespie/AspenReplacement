@@ -32,19 +32,6 @@ ROOT = Path(__file__).resolve().parent
 REFRESH_SECONDS = 60
 
 
-def remove_course_numbers(snapshot):
-    """Remove legacy course numbers from every saved grade period in place."""
-    if not snapshot:
-        return False
-    changed = False
-    for period in [snapshot, *snapshot.get("gradePeriods", {}).values()]:
-        for course in period.get("classes", []):
-            if "courseNumber" in course:
-                del course["courseNumber"]
-                changed = True
-    return changed
-
-
 class Store:
     def __init__(self, directory, cipher=None, claim_student=None):
         self.directory = Path(directory)
@@ -69,11 +56,8 @@ class Store:
             self.snapshot = json.loads(self.path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
             self.snapshot = None
-        if remove_course_numbers(self.snapshot):
-            self.save(self.snapshot)
 
     def save(self, snapshot):
-        remove_course_numbers(snapshot)
         fd, temp = tempfile.mkstemp(dir=self.directory)
         try:
             with os.fdopen(fd, "w") as file:
@@ -487,28 +471,6 @@ def create_app(directory=None, config=None):
             store.needs_auth = False
             store.error = None
             store.save(demo_snapshot())
-        return jsonify(view())
-
-    @app.post("/api/grades")
-    def grade_period():
-        with store.lock:
-            if not store.snapshot:
-                return jsonify(error="Connect Aspen or load sample data first."), 400
-            body = request.get_json(silent=True)
-            if not isinstance(body, dict):
-                return jsonify(error="Choose a school year and quarter."), 400
-            year, quarter = body.get("year"), body.get("quarter")
-            if not isinstance(year, str) or not isinstance(quarter, str):
-                return jsonify(error="Choose a school year and quarter."), 400
-            if year == "previous" and quarter == "current":
-                quarter = "all"
-            periods = store.snapshot.get("gradePeriods", {})
-            period = periods.get(f"{year}:{quarter}")
-            if not period:
-                return jsonify(error="That period is not cached. Refresh Aspen to download all school years and quarters."), 400
-            # Compatibility for existing callers: selection only changes the
-            # local view. It never reconnects or sends a request to Aspen.
-            store.save({**store.snapshot, **period})
         return jsonify(view())
 
     @app.post("/api/disconnect")
