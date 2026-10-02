@@ -195,7 +195,6 @@ function setState(state) {
   }
   $("grade-period-status").textContent = `${gradePeriodLabel(filters)}${state.syncing ? " · Refreshing…" :
     !canChangePeriod ? " · Refresh Aspen once to download all periods." : ""}`;
-  $("home-grade-period").textContent = gradePeriodLabel(filters);
   $("refresh").disabled = disabled || !signedIn || !state.canRetry;
   $("disconnect").disabled = disabled || !signedIn || !state.canRetry;
   $("saved-connection").hidden = !state.signedIn || !state.canRetry || state.connected;
@@ -268,7 +267,6 @@ function activityScore(item, course) {
 function renderFeed() {
   const snapshot = currentState?.snapshot;
   const feed = snapshot?.activityFeed;
-  $("feed-status").textContent = featureStatus(feed);
   const type = $("feed-type").value;
   const search = $("feed-search").value.trim().toLowerCase();
   const reasons = new Map((snapshot?.attendance?.records || []).filter(r => r.oid).map(r => [r.oid, r.reason]));
