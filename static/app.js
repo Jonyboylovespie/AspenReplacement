@@ -352,7 +352,6 @@ function renderFeed() {
 function renderAttendance() {
   const snapshot = currentState?.snapshot;
   const daily = snapshot?.attendance;
-  $("attendance-status").textContent = featureStatus(daily) + (daily?.available ? ` ${(daily.records || []).length} records.` : "");
   $("daily-attendance").replaceChildren();
   for (const item of daily?.records || []) {
     const row = element("tr");
@@ -361,7 +360,6 @@ function renderAttendance() {
   }
   const feed = snapshot?.activityFeed;
   const periods = (feed?.events || []).filter(item => item.type === "classAttendance");
-  $("period-status").textContent = featureStatus(feed) + (feed?.available ? ` ${periods.length} class attendance records. Older class attendance is outside this feed's window.` : "");
   $("period-attendance").replaceChildren();
   for (const item of periods) {
     const row = element("tr");
@@ -406,14 +404,17 @@ function renderClassCards() {
     const card = element("a");
     card.className = `course-card ${letterGradeClass(course.displayGrade)}`;
     card.href = classHref(course);
-    const code = element("span", course.courseNumber || "Current class");
-    code.className = "course-code";
+    if (course.courseNumber) {
+      const code = element("span", course.courseNumber);
+      code.className = "course-code";
+      card.append(code);
+    }
     const info = element("p", course.teacherName || "Teacher not listed");
     info.append(element("br"), element("span", course.meetingTime || ""));
     const bottom = element("div");
     bottom.className = "course-bottom";
     bottom.append(element("strong", classGradeDisplay(course.displayGrade)), element("span", "View breakdown"));
-    card.append(code, element("h3", course.courseName), info, bottom);
+    card.append(element("h3", course.courseName), info, bottom);
     $("classes").append(card);
   }
 }
