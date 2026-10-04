@@ -56,6 +56,17 @@ Disconnect deletes that account's saved Aspen session. Clear deletes its saved
 grades too. Google sign-out revokes that browser's access while the account's
 background refresh continues.
 
+Use **Enable notifications** beside Recent activity and allow the browser
+permission prompt to receive browser notifications for new or changed entries
+while the dashboard is open. This setting is saved per account and student in
+that browser; **Disable notifications** turns
+browser alerts off. Browser notifications require HTTPS (or localhost) and browser
+support. Clicking an alert opens Recent activity and clears its search/type filters.
+The first feed load establishes a quiet baseline; subsequent checks do not repeat
+alerts for entries already seen, including after reload. Sample data and failed or
+stale activity responses do not generate alerts. Keep a tab open to receive updates;
+this does not deliver push notifications after all site tabs are closed.
+
 Verification:
 
 AI chat is available only to accounts explicitly listed in

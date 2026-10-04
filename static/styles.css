@@ -498,6 +498,10 @@ main {
   line-height: 1.45;
 }
 
+#activity-notifications {
+  flex: 0 0 auto;
+}
+
 .section-heading > span,
 .section-heading .live-label {
   flex: 0 0 auto;

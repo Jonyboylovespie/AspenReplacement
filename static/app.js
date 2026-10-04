@@ -244,6 +244,7 @@ function setState(state) {
   $("grade-quarter").value = filters.quarter;
 
   globalThis.betterAspenChat?.update(currentState);
+  globalThis.betterAspenActivity?.update(currentState);
 }
 
 function featureStatus(data) {
@@ -562,6 +563,17 @@ $("feed-type").addEventListener("change", () => { feedLimit = 12; renderFeed(); 
 $("feed-search").addEventListener("input", () => { feedLimit = 12; renderFeed(); });
 $("feed-more").addEventListener("click", () => { feedLimit += 12; renderFeed(); });
 
+function openRecentActivity() {
+  $("feed-type").value = "all";
+  $("feed-search").value = "";
+  feedLimit = 12;
+  location.hash = "home";
+  route();
+  renderFeed();
+  $("activity-title").focus();
+  $("activity-title").scrollIntoView({block: "start"});
+}
+
 function friendlyDate(value) {
   const formatted = formatDate(value);
   const date = /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? new Date(`${formatted}T12:00:00`) : new Date(dateValue(value));
@@ -628,6 +640,7 @@ document.querySelectorAll(".connection-open").forEach(button => button.addEventL
 $("close-connection").addEventListener("click", () => $("connection-dialog").close());
 $("class-search").addEventListener("input", renderClassCards);
 window.addEventListener("hashchange", () => route(true));
+window.addEventListener("betteraspen:activity", openRecentActivity);
 route();
 
 async function poll() {

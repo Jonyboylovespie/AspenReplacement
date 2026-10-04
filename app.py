@@ -369,6 +369,14 @@ def create_app(directory=None, config=None):
     def sync_controls():
         return send_from_directory(ROOT / "static", "sync-controls.js")
 
+    @app.get("/activity-notifications.js")
+    def activity_notifications_javascript():
+        return send_from_directory(ROOT / "static", "activity-notifications.js")
+
+    @app.get("/notification-worker.js")
+    def notification_worker():
+        return send_from_directory(ROOT / "static", "notification-worker.js")
+
     @app.get("/ai-chat.js")
     def ai_chat_javascript():
         return send_from_directory(ROOT / "static", "ai-chat.js")
