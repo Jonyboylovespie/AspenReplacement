@@ -82,6 +82,7 @@ class ChatTests(unittest.TestCase):
         self.assertFalse(kwargs["allow_redirects"])
         payload = kwargs["json"]
         self.assertEqual(payload["model"], "gpt-6.1-sol")
+        self.assertEqual(payload["service_tier"], "fast")
         self.assertEqual(payload["reasoning"], {"effort": "low"})
         self.assertFalse(payload["store"])
         records = payload["input"][0]["content"]

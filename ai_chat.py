@@ -98,7 +98,7 @@ def ask(endpoint, key, messages, context):
         raise ChatError("Your saved records are too large for chat right now.")
     try:
         response = requests.post(endpoint, headers={"Authorization": f"Bearer {key}"},
-                                 json={"model": MODEL, "reasoning": {"effort": "low"},
+                                 json={"model": MODEL, "service_tier": "fast", "reasoning": {"effort": "low"},
                                        "store": False, "max_output_tokens": 4000,
                                        "instructions": INSTRUCTIONS + (FORMAT_GUIDE if compact.get("format") == FORMAT else ""),
                                        "input": [{"role": "developer", "content": "Aspen records (JSON):\n" + records}, *messages]},

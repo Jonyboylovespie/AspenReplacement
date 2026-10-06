@@ -81,7 +81,9 @@ BETTERASPEN_AI_WHITELIST=alice@school.example,bob@school.example
 
 The endpoint is the full URL of an OpenAI Responses API compatible service;
 HTTPS is required except for localhost development. Requests use `gpt-6.1-sol`
-with low reasoning effort. The key, endpoint, and whitelist stay on the server.
+with Fast mode (`service_tier=fast`) and low reasoning effort. The configured
+provider must support Fast mode; OpenAI bills it at a premium over Standard processing.
+The key, endpoint, and whitelist stay on the server.
 Restart Gunicorn after changing these settings. Until a key and whitelist are
 configured, nobody sees the chat button. The server checks access on every chat
 request, independently of button visibility, and sends only that account's saved
