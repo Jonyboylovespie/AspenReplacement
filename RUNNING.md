@@ -27,11 +27,18 @@ configure that proxy to preserve Host and forward the protocol. Otherwise leave
 it unset. `BETTERASPEN_BIND` can override the listening address/port.
 
 Sign in with Google on BetterAspen, open Connection, and enter your Aspen
-cookie values. In a separate tab, sign into `https://aspen.darienps.org/`.
+cookie values. In a separate tab, open `https://aspen.darienps.org/aspen/logon.do`,
+choose **Students and Staff Login**, and sign in with your school Google account.
 Open browser developer tools, then Application → Cookies in Chrome or
 Storage → Cookies in Firefox, and select `aspen.darienps.org`.
 Copy the **value** of `JSESSIONID` with path `/app` and `VITHAR_CSRF` into
-the required fields. Open Aspen's desktop portal and copy the separate
+the required fields. Chrome may show only cookies applicable to the current
+page's path. If only the `/aspen` session appears, open
+`https://aspen.darienps.org/app/api/index.html` after signing in and inspect
+cookies in that tab to find `/app`. The API page is not a sign-in flow; if
+BetterAspen rejects the session, sign in again through **Students and Staff
+Login** using the sign-in link above.
+Open Aspen's desktop portal and copy the separate
 `JSESSIONID` with path `/aspen` to enable desktop averages, attendance, and
 recent activity. If `cf_clearance` is present, enter its value too.
 Click **Save and connect**. If Aspen goes down or denies access, use **Retry saved
