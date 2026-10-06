@@ -1342,13 +1342,13 @@ body[data-design='passing-period'] .course-card {
   box-shadow: 0 5px 0 #dbeeed;
 }
 
-body[data-design='passing-period'] .grade-a {
+body[data-design='passing-period'] .grade-a,
+body[data-design='passing-period'] .attendance-excused {
   --route: #3387d4;
   --grade-color: #2166a6;
 }
 
-body[data-design='passing-period'] .grade-a-minus,
-body[data-design='passing-period'] .attendance-excused {
+body[data-design='passing-period'] .grade-a-minus {
   --route: #2c9a66;
   --grade-color: #157148;
 }
@@ -1526,13 +1526,13 @@ body[data-design='passing-period'][data-mode='dark'] .event-icon.attendance {
   border-color: #ff887c;
 }
 
-body[data-design='passing-period'][data-mode='dark'] .grade-a {
+body[data-design='passing-period'][data-mode='dark'] .grade-a,
+body[data-design='passing-period'][data-mode='dark'] .attendance-excused {
   --route: #78b9ff;
   --grade-color: #78b9ff;
 }
 
-body[data-design='passing-period'][data-mode='dark'] .grade-a-minus,
-body[data-design='passing-period'][data-mode='dark'] .attendance-excused {
+body[data-design='passing-period'][data-mode='dark'] .grade-a-minus {
   --route: #5ed39a;
   --grade-color: #5ed39a;
 }
