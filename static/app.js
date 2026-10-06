@@ -376,7 +376,7 @@ function classHref(course, currentPeriod = false) {
 function renderClasses() {
   const snapshot = currentPeriodSnapshot();
   const courses = classesWithGradesFirst(snapshot.classes || []);
-  $("home-title").textContent = snapshot.mode === "demo" ? "Your school day, at a glance." : "Welcome back";
+  $("home-title").textContent = "Welcome back";
   $("home-classes").replaceChildren();
   for (const course of courses) {
     const link = element("a");
@@ -577,7 +577,8 @@ function openRecentActivity() {
   $("feed-search").value = "";
   feedLimit = 12;
   location.hash = "home";
-  route();
+  // Notification links need the activity heading visible before focusing it.
+  route(false, false);
   renderFeed();
   $("activity-title").focus();
   $("activity-title").scrollIntoView({block: "start"});
@@ -589,7 +590,67 @@ function friendlyDate(value) {
   return Number.isNaN(date.getTime()) ? formatted : date.toLocaleDateString(undefined, {weekday: "long", month: "long", day: "numeric", year: "numeric"});
 }
 
-function route(focus = false) {
+let activeView = null;
+let visibleView = null;
+let viewAnimation = null;
+let navigationVersion = 0;
+
+function switchView(view, focus, animate) {
+  if (view === activeView && animate) {
+    if (focus) { $("main").focus({preventScroll: true}); window.scrollTo(0, 0); }
+    return;
+  }
+  const previous = visibleView;
+  const interrupted = !!viewAnimation;
+  const version = ++navigationVersion;
+  activeView = view;
+  viewAnimation?.cancel();
+  viewAnimation = null;
+  const incoming = $(`${view}-view`);
+  const outgoing = previous && $(`${previous}-view`);
+  const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const canAnimate = animate && previous && previous !== view && !$("dashboard").hidden &&
+    !reducedMotion && incoming.animate && outgoing.animate;
+  const order = {home: 0, grades: 1, detail: 1.5, attendance: 2};
+  const direction = order[view] > order[previous] ? 1 : -1;
+  const enter = () => {
+    if (version !== navigationVersion) return;
+    for (const name of ["home", "grades", "attendance", "detail"]) {
+      const section = $(`${name}-view`);
+      section.hidden = name !== view;
+      section.inert = name !== view;
+    }
+    visibleView = view;
+    if (focus) { $("main").focus({preventScroll: true}); window.scrollTo(0, 0); }
+    if (!canAnimate) return;
+    const entrance = incoming.animate([
+      {opacity: 0, transform: `translateX(${direction * 20}px)`},
+      {opacity: 1, transform: "translateX(0)"},
+    ], {duration: 240, easing: "cubic-bezier(.2, .7, .2, 1)"});
+    viewAnimation = entrance;
+    entrance.finished.then(() => {
+      if (viewAnimation === entrance) viewAnimation = null;
+    }, () => {});
+  };
+  // A fast second click goes straight to its destination. Cancelled exits never
+  // get to restore an older page, and old/new text never shares the same frame.
+  if (!canAnimate || interrupted) {
+    enter();
+    return;
+  }
+  outgoing.inert = true;
+  const departure = outgoing.animate([
+    {opacity: 1, transform: "none"},
+    {opacity: 0, transform: `translateX(${direction * -12}px)`},
+  ], {duration: 90, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards"});
+  viewAnimation = departure;
+  departure.finished.then(() => {
+    enter();
+    departure.cancel();
+  }, () => {});
+}
+
+function route(focus = false, animate = true) {
   const hash = location.hash.slice(1) || "home";
   let view = ["home", "grades", "attendance"].includes(hash) ? hash : "grades";
   if (hash.startsWith("class/")) {
@@ -610,14 +671,18 @@ function route(focus = false) {
       view = "detail";
     }
   }
-  for (const name of ["home", "grades", "attendance", "detail"]) $(`${name}-view`).hidden = name !== view;
+  // Polling the same route should never restart an entrance animation.
+  if (view !== activeView || focus || !animate) switchView(view, focus, animate);
+  const navigation = view === "detail" ? "grades" : view;
+  if (focus) $("main-navigation").setAttribute("data-animated", "");
   document.querySelectorAll("[data-view]").forEach(link => {
-    if (link.dataset.view === (view === "detail" ? "grades" : view)) link.setAttribute("aria-current", "page");
+    if (link.dataset.view === navigation) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  // The first reveal uses the final theme and selection, without a transition.
+  $("main-navigation").setAttribute("data-ready", "");
   const label = view === "detail" ? selectedCourse()?.courseName : {home: "Home", grades: "Grades", attendance: "Attendance"}[view];
   document.title = `BetterAspen · ${label}`;
-  if (focus) { $("main").focus({preventScroll: true}); window.scrollTo(0, 0); }
 }
 
 const colorModes = {
@@ -650,6 +715,10 @@ $("close-connection").addEventListener("click", () => $("connection-dialog").clo
 $("class-search").addEventListener("input", renderClassCards);
 window.addEventListener("hashchange", () => route(true));
 window.addEventListener("betteraspen:activity", openRecentActivity);
+
+window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", event => {
+  if (event.matches && activeView) switchView(activeView, false, false);
+});
 route();
 
 async function poll() {

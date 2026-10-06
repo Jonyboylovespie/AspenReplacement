@@ -1248,6 +1248,19 @@ body[data-design='passing-period'] .sidebar nav a[aria-current='page'] {
   color: #ef6a5b;
 }
 
+/* Avoid showing the unselected, light-theme icons during startup. */
+body[data-design='passing-period'] .sidebar nav:not([data-ready]) .nav-icon {
+  visibility: hidden;
+}
+
+body[data-design='passing-period'] .sidebar nav[data-animated] a {
+  transition: color 160ms ease;
+}
+
+body[data-design='passing-period'] .sidebar nav[data-animated] .nav-icon {
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
 body[data-design='passing-period'] .nav-icon {
   width: 36px;
   height: 36px;
