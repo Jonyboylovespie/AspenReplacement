@@ -987,6 +987,14 @@ summary {
   min-width: 310px;
 }
 
+.attendance-layout .attendance-unexcused {
+  background: color-mix(in srgb, #e05b52 12%, var(--surface));
+}
+
+body[data-mode='dark'] .attendance-layout .attendance-unexcused {
+  background: color-mix(in srgb, #ff8175 15%, var(--surface));
+}
+
 .empty-welcome {
   max-width: 700px;
   padding: 72px 20px 100px 0;

@@ -343,18 +343,27 @@ function renderFeed() {
 
 function renderAttendance() {
   const snapshot = currentState?.snapshot;
+  const feed = snapshot?.activityFeed;
+  const dailyEvents = new Map((feed?.events || [])
+    .filter(item => item.type === "dailyAttendance" && item.oid)
+    .map(item => [item.oid, item]));
+  const isUnexcused = item => item.excused === false ||
+    (item.excused !== true && /(?:^|-)U$/i.test(String(item.code || "").trim()));
   const daily = snapshot?.attendance;
   $("daily-attendance").replaceChildren();
   for (const item of daily?.records || []) {
     const row = element("tr");
+    if (isUnexcused({...item, excused: item.excused ?? dailyEvents.get(item.oid)?.excused})) {
+      row.className = "attendance-unexcused";
+    }
     for (const value of [formatDate(item.date), item.code, item.reason || "—"]) row.append(element("td", value));
     $("daily-attendance").append(row);
   }
-  const feed = snapshot?.activityFeed;
   const periods = (feed?.events || []).filter(item => item.type === "classAttendance");
   $("period-attendance").replaceChildren();
   for (const item of periods) {
     const row = element("tr");
+    if (isUnexcused(item)) row.className = "attendance-unexcused";
     for (const value of [formatDate(item.date), item.className, item.period || "—", item.code, attendanceFlags(item) || "—"]) row.append(element("td", value));
     $("period-attendance").append(row);
   }
