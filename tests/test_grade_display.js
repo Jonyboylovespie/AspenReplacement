@@ -30,12 +30,13 @@ test("assignment grades show score divided by possible as a percentage", () => {
 test("activity colors follow assignment grades and explicit attendance status", () => {
   const color = context.activityColorClass;
   assert.equal(color({type: "grade"}, "100% A"), "grade-a");
+  assert.equal(color({type: "grade"}, "91% A−"), "grade-a-minus");
   assert.equal(color({type: "grade"}, "83.3% B"), "grade-b");
   assert.equal(color({type: "grade"}, "73.3% C"), "grade-low");
   assert.equal(color({type: "grade"}, "—"), "grade-none");
   for (const type of ["dailyAttendance", "classAttendance"]) {
     for (const flag of ["absent", "tardy"]) {
-      assert.equal(color({type, [flag]: true, excused: true}), "grade-a");
+      assert.equal(color({type, [flag]: true, excused: true}), "attendance-excused");
       assert.equal(color({type, [flag]: true, excused: false}), "grade-low");
       assert.equal(color({type, [flag]: true, excused: null}), "grade-none");
     }
@@ -89,8 +90,11 @@ test("existing Aspen letters, special codes, and missing grades are preserved", 
 });
 
 test("class colors follow the displayed letter grade", () => {
-  for (const value of ["A", "A+", "A-", "A−", "93.4", "91.0% A−"]) {
+  for (const value of ["A", "A+", "93.4"]) {
     assert.equal(gradeClass(value), "grade-a");
+  }
+  for (const value of ["A-", "A−", "91.0", "91.0% A−"]) {
+    assert.equal(gradeClass(value), "grade-a-minus");
   }
   for (const value of ["B", "B+", "B-", "B−", "82.0", "88.5 B+"]) {
     assert.equal(gradeClass(value), "grade-b");

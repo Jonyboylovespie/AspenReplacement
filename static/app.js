@@ -128,9 +128,9 @@ function classGradeDisplay(value) {
 
 function letterGradeClass(value) {
   const match = classGradeDisplay(value).toUpperCase()
-    .match(/(?:^|\s)([A-F])(?:[+\-−])?(?=\s|$)/);
+    .match(/(?:^|\s)([A-F])([+\-−])?(?=\s|$)/);
   if (!match) return "grade-none";
-  if (match[1] === "A") return "grade-a";
+  if (match[1] === "A") return ["-", "−"].includes(match[2]) ? "grade-a-minus" : "grade-a";
   if (match[1] === "B") return "grade-b";
   return "grade-low";
 }
@@ -154,7 +154,7 @@ function assignmentGradeDisplay(score, possible) {
 function activityColorClass(item, grade) {
   if (item.type === "grade") return letterGradeClass(grade);
   if (item.absent === true || item.tardy === true) {
-    if (item.excused === true) return "grade-a";
+    if (item.excused === true) return "attendance-excused";
     if (item.excused === false) return "grade-low";
   }
   return "grade-none";

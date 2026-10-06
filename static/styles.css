@@ -1343,6 +1343,12 @@ body[data-design='passing-period'] .course-card {
 }
 
 body[data-design='passing-period'] .grade-a {
+  --route: #3387d4;
+  --grade-color: #2166a6;
+}
+
+body[data-design='passing-period'] .grade-a-minus,
+body[data-design='passing-period'] .attendance-excused {
   --route: #2c9a66;
   --grade-color: #157148;
 }
@@ -1521,6 +1527,12 @@ body[data-design='passing-period'][data-mode='dark'] .event-icon.attendance {
 }
 
 body[data-design='passing-period'][data-mode='dark'] .grade-a {
+  --route: #78b9ff;
+  --grade-color: #78b9ff;
+}
+
+body[data-design='passing-period'][data-mode='dark'] .grade-a-minus,
+body[data-design='passing-period'][data-mode='dark'] .attendance-excused {
   --route: #5ed39a;
   --grade-color: #5ed39a;
 }
@@ -1540,11 +1552,11 @@ body[data-design='passing-period'][data-mode='dark'] .grade-none {
   --grade-color: #55c4c2;
 }
 
-body[data-design='passing-period'] .activity-item:is(.grade-a, .grade-b, .grade-low, .grade-none) :is(h3, h3 a, .event-value, .event-icon) {
+body[data-design='passing-period'] .activity-item:is(.grade-a, .grade-a-minus, .grade-b, .grade-low, .grade-none, .attendance-excused) :is(h3, h3 a, .event-value, .event-icon) {
   color: var(--grade-color);
 }
 
-body[data-design='passing-period'] .activity-item:is(.grade-a, .grade-b, .grade-low, .grade-none) .event-icon {
+body[data-design='passing-period'] .activity-item:is(.grade-a, .grade-a-minus, .grade-b, .grade-low, .grade-none, .attendance-excused) .event-icon {
   border-color: var(--route);
 }
 
