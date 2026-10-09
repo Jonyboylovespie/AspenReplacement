@@ -122,6 +122,9 @@ class GradePeriodTests(unittest.TestCase):
                 with store.lock:
                     self.assertEqual(store.snapshot["gradeFilters"]["year"], "previous")
                     self.assertEqual(store.snapshot["gradeFilters"]["quarter"], "all")
+                # Publication precedes push delivery; finish the refresh before removing its state directory.
+                with store.sync_lock:
+                    pass
 
     def test_restart_restores_only_saved_students_session(self):
         with tempfile.TemporaryDirectory() as directory:

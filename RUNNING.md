@@ -63,16 +63,37 @@ Disconnect deletes that account's saved Aspen session. Clear deletes its saved
 grades too. Google sign-out revokes that browser's access while the account's
 background refresh continues.
 
-Use **Enable notifications** beside Recent activity and allow the browser
-permission prompt to receive browser notifications for new or changed entries
-while the dashboard is open. This setting is saved per account and student in
-that browser; **Disable notifications** turns
-browser alerts off. Browser notifications require HTTPS (or localhost) and browser
-support. Clicking an alert opens Recent activity and clears its search/type filters.
-The first feed load establishes a quiet baseline; subsequent checks do not repeat
-alerts for entries already seen, including after reload. Sample data and failed or
-stale activity responses do not generate alerts. Keep a tab open to receive updates;
-this does not deliver push notifications after all site tabs are closed.
+Use **Enable notifications** beside Recent activity and allow the permission
+prompt. With Web Push support, the server sends new or changed activity during
+its background Aspen refresh, even with every dashboard tab closed. Existing
+enabled browsers with granted permission register for push on their next visit.
+Browsers without Web Push show a message explaining that alerts require an open
+page. HTTPS is required outside localhost.
+
+On iPhone or iPad, use iOS/iPadOS 16.4 or later, add BetterAspen to the Home Screen,
+then open that app and tap **Enable notifications**. If an existing shortcut opens
+in Safari, remove that shortcut and add it again after this update. Allow alerts
+and badges in the app's iOS notification settings. Supported installed apps show
+the number of unread activity entries on their icon; viewing Home clears that
+device's badge. Desktop delivery requires browser/OS notifications to be enabled;
+a fully quit browser may defer delivery until it runs again.
+
+Preferences remain per account/student/browser. **Disable notifications** removes
+that device's subscription. Sign-out revokes subscriptions for that browser login;
+other logged-in devices stay subscribed. Login expiry (30 days) also stops delivery
+until you sign in again. Push requires a valid saved Aspen session and recent
+activity access; reconnect if Aspen expires your cookies. Clicking an alert opens
+Recent activity and clears search/type filters. The first feed establishes a quiet
+baseline. Repeat checks, reloads, and server restarts do not replay seen activity.
+Sample data and failed or stale feeds do not generate alerts. Temporary push
+failures retry on the next successful refresh; expired subscriptions are removed.
+
+Install the updated requirements and restart Gunicorn to deploy notification
+changes. VAPID keys are generated automatically in `.state/push-vapid.pem`; keep
+this file and the account database across restarts so existing subscriptions work.
+No paid push service or manually configured VAPID keys are needed. The configured
+public URL identifies the sender to browser push services. Notifications contain
+only an activity count, with no student name, grades, or credentials.
 
 Verification:
 

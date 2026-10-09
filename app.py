@@ -3,6 +3,7 @@ import argparse
 import atexit
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -26,6 +27,7 @@ import requests
 from accounts import AccountDatabase, private_file
 from ai_chat import ChatError, academic_context, ask, validate_messages
 from runtime import RefreshRuntime
+from push_notifications import PushNotifications
 from aspen import AspenClient, AspenError, AuthenticationRequired, CookieImportError, demo_snapshot, parse_cookies, cookies_from_values
 
 ROOT = Path(__file__).resolve().parent
@@ -33,7 +35,7 @@ REFRESH_SECONDS = 60
 
 
 class Store:
-    def __init__(self, directory, cipher=None, claim_student=None):
+    def __init__(self, directory, cipher=None, claim_student=None, on_snapshot=None):
         self.directory = Path(directory)
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.directory, 0o700)
@@ -50,6 +52,7 @@ class Store:
         self.last_attempt = None
         self.cipher = cipher
         self.claim_student = claim_student
+        self.on_snapshot = on_snapshot
         self.session_path = self.directory / "aspen-session.enc"
         self.connection_version = 0
         try:
@@ -206,6 +209,12 @@ class Store:
                     self.save(snapshot)
                     self.error = None
                     self.needs_auth = False
+                if self.on_snapshot:
+                    try:
+                        self.on_snapshot(snapshot)
+                    except Exception:
+                        # Push outages must not make a successful Aspen sync fail.
+                        logging.getLogger(__name__).exception("Background activity notifications failed")
             except AuthenticationRequired as error:
                 with self.lock:
                     self.error = str(error)
@@ -269,6 +278,8 @@ def create_app(directory=None, config=None):
         app.config["SESSION_COOKIE_SECURE"] = public.startswith("https://")
     directory = Path(directory or os.environ.get("BETTERASPEN_STATE_DIR", ROOT / ".state"))
     accounts = AccountDatabase(directory)
+    push = PushNotifications(accounts, app.config["PUBLIC_URL"] or "https://localhost")
+    app.extensions["push_notifications"] = push
     app.secret_key = private_file(directory / "web-secret", secrets.token_bytes(32))
     cipher = Fernet(private_file(directory / "session-key", Fernet.generate_key()))
     runtime = RefreshRuntime(REFRESH_SECONDS, auto_resume=app.config["START_REFRESH"])
@@ -288,7 +299,8 @@ def create_app(directory=None, config=None):
     def account_store(subject):
         def make_store():
             return Store(accounts.account_directory(subject), cipher=cipher,
-                         claim_student=lambda oid: accounts.claim_student(subject, oid))
+                         claim_student=lambda oid: accounts.claim_student(subject, oid),
+                         on_snapshot=lambda snapshot: push.changed(subject, snapshot))
         return runtime.add(subject, make_store)
 
     app.extensions["account_store"] = account_store
@@ -301,6 +313,7 @@ def create_app(directory=None, config=None):
     def view():
         return {**store.view(), "account": {"email": g.account["email"], "name": g.account["name"]},
                 "aiChatEnabled": chat_allowed() and bool(app.config["AI_API_KEY"]),
+                "pushPublicKey": push.public_key,
                 "signedIn": True, "googleConfigured": bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"])}
 
     @app.before_request
@@ -337,6 +350,7 @@ def create_app(directory=None, config=None):
             login = accounts.login(token["userinfo"])
         except (OAuthError, JoseError, ValueError, KeyError, requests.RequestException):
             return redirect("/?login=failed")
+        push.revoke_login(session.get("login"))
         accounts.logout(session.get("login"))
         session.clear()
         session["login"] = login
@@ -345,6 +359,7 @@ def create_app(directory=None, config=None):
 
     @app.post("/auth/logout")
     def logout():
+        push.revoke_login(session.get("login"))
         accounts.logout(session.get("login"))
         session.clear()
         return jsonify(signedIn=False)
@@ -377,6 +392,10 @@ def create_app(directory=None, config=None):
     def notification_worker():
         return send_from_directory(ROOT / "static", "notification-worker.js")
 
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return send_from_directory(ROOT / "static", "manifest.webmanifest", mimetype="application/manifest+json")
+
     @app.get("/ai-chat.js")
     def ai_chat_javascript():
         return send_from_directory(ROOT / "static", "ai-chat.js")
@@ -401,6 +420,31 @@ def create_app(directory=None, config=None):
                            needsAuth=True, syncing=False, stale=True, error=None,
                            googleConfigured=bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]))
         return jsonify(view())
+
+    @app.post("/api/push/subscribe")
+    def push_subscribe():
+        try:
+            with store.lock:
+                push.subscribe(g.account["subject"], session["login"], store.snapshot, request.get_json(silent=True))
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        return jsonify(enabled=True)
+
+    @app.post("/api/push/unsubscribe")
+    def push_unsubscribe():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or not isinstance(body.get("endpoint"), str):
+            return jsonify(error="Invalid push endpoint."), 400
+        push.remove(g.account["subject"], body["endpoint"])
+        return jsonify(enabled=False)
+
+    @app.post("/api/push/read")
+    def push_read():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or not isinstance(body.get("endpoint"), str):
+            return jsonify(error="Invalid push endpoint."), 400
+        push.read(g.account["subject"], body["endpoint"])
+        return jsonify(read=True)
 
     @app.post("/api/chat")
     def chat():

@@ -10,6 +10,7 @@
   <link rel="icon" type="image/png" href="/fonts/site-icons/favicon-32.png?v=teal-leaf-2" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="/fonts/site-icons/betteraspen-favicon.svg?v=teal-leaf-2" sizes="any">
   <link rel="apple-touch-icon" href="/fonts/site-icons/apple-touch-icon.png?v=teal-leaf-2">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/styles.css">
   <script src="/activity-notifications.js" defer></script>
   <script src="/app.js" defer></script>
@@ -52,7 +53,7 @@
           <section id="home-view" class="view" aria-labelledby="home-title">
             <div class="page-heading"><div><h1 id="home-title">Welcome back.</h1></div></div>
             <div class="home-layout">
-              <section class="activity-section panel" aria-labelledby="activity-title"><div class="section-heading"><div><h2 id="activity-title" tabindex="-1">Recent activity</h2><p id="notification-status" role="status">Enable browser notifications for new activity while this site is open.</p></div><button id="activity-notifications" class="quiet-button" type="button" aria-pressed="false">Enable notifications</button></div>
+              <section class="activity-section panel" aria-labelledby="activity-title"><div class="section-heading"><div><h2 id="activity-title" tabindex="-1">Recent activity</h2><p id="notification-status" role="status">Enable notifications for new activity, even when the app is closed.</p></div><button id="activity-notifications" class="quiet-button" type="button" aria-pressed="false">Enable notifications</button></div>
                 <div class="filter-row"><label class="search-field"><span aria-hidden="true">⌕</span><input id="feed-search" type="search" aria-label="Search activity" placeholder="Search activity…"></label><select id="feed-type" aria-label="Activity type"><option value="all">All activity</option><option value="grade">Posted grades</option><option value="dailyAttendance">Daily attendance</option><option value="classAttendance">Class attendance</option></select></div>
                 <div id="activity-feed" class="activity-list"></div><p id="feed-count" class="table-footnote" role="status"></p><button id="feed-more" class="feed-more" type="button" hidden>Show more activity</button>
               </section>
