@@ -431,7 +431,6 @@ function renderDetails() {
   $("details-title").textContent = course?.courseName || "Class breakdown";
   $("course-grade").textContent = classGradeDisplay(course?.displayGrade);
   $("course-grade").className = letterGradeClass(course?.displayGrade);
-  $("grade-source").textContent = course?.gradeSource ? `Source: ${course.gradeSource}` : "No average available";
   $("class-select").value = selectedClass;
   $("course-info").textContent = course ? [course.teacherName, course.teacherEmail, gradePeriodLabel(gradePeriod(detailSnapshot()))].filter(Boolean).join(" · ") : "No classes returned for this period.";
   const summary = course?.averageSummary || [];
