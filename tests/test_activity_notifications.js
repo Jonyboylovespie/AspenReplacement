@@ -55,6 +55,7 @@ function harness({storage = new Map(), permission = "granted", supported = true,
       setItem(key, value) { if (brokenStorage) throw new Error("Storage unavailable"); storage.set(key, value); }
     }
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../static/api.js"), "utf8"), context);
   vm.runInContext(source, context);
   return {update: context.betterAspenActivity.update, delivered, nodes, storage, Notification, listeners, events,
     requests: () => requests, toggle: () => nodes.get("activity-notifications").listeners.click()};

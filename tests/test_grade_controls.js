@@ -17,7 +17,8 @@ test("an access error keeps saved-session retry available and clears after recov
   };
   const context = vm.createContext({document, localStorage: {getItem() { return null; }}});
   const source = fs.readFileSync(path.join(__dirname, "../static/app.js"), "utf8");
-  vm.runInContext(source.slice(0, source.indexOf("function featureStatus(")), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../static/formatting.js"), "utf8") + "\n" + source, context);
+  context.route = () => {};
   const rejected = {signedIn: true, connected: false, needsAuth: true, canRetry: true,
     syncing: false, error: "Aspen denied access.", snapshot: null};
   context.setState(rejected);
@@ -54,8 +55,8 @@ test("cached periods switch immediately offline and during refresh without fetch
     renderClasses() {}, renderFeed() {}, renderAttendance() {}, route() {},
   });
   const source = fs.readFileSync(path.join(__dirname, "../static/app.js"), "utf8");
-  vm.runInContext(source.slice(0, source.indexOf("function featureStatus(")), context);
-  vm.runInContext(source.slice(source.indexOf("function changeGradePeriod("), source.indexOf('$("grade-year").addEventListener')), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../static/formatting.js"), "utf8") + "\n" + source, context);
+  context.route = () => {};
   const years = [{value: "current", label: "Current year"}, {value: "previous", label: "Previous year"}];
   const current = {classes: [{courseName: "Current class"}], gradeFilters: {year: "current", quarter: "current", years,
     quarters: [{value: "current", label: "Current quarter"}]}};
@@ -106,7 +107,8 @@ test("home stays current through grade changes, polling, reload, and class navig
     fetch() { assert.fail("Cached navigation must not fetch data."); },
   });
   const source = fs.readFileSync(path.join(__dirname, "../static/app.js"), "utf8");
-  vm.runInContext(source.slice(0, source.indexOf("const colorModes =")), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../static/formatting.js"), "utf8") + "\n" + source, context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../static/rendering.js"), "utf8"), context);
   const years = [{value: "current", label: "Current school year"}, {value: "previous", label: "Previous school year"}];
   const quarters = [{value: "current", label: "Current quarter"}, {value: "all", label: "All quarters"},
     {value: "q2", label: "Q2"}];
@@ -155,7 +157,7 @@ test("home stays current through grade changes, polling, reload, and class navig
   assert.equal(nodes.get("course-grade").textContent, "95 A");
   assert.equal(nodes.get("term-select").value, "all");
   assert.match(nodes.get("course-info").textContent, /Current school year · Current quarter/);
-  nodes.get("class-select").listeners.change();
+  location.hash = context.classHref({studentScheduleOid: nodes.get("class-select").value}, context.isCurrentClassRoute());
   context.route();
   assert.equal(nodes.get("course-grade").textContent, "95 A");
   assert.equal(nodes.get("grade-quarter").value, "q2");

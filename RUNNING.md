@@ -46,6 +46,18 @@ session** in Connection (or Refresh) to try the saved cookies again. Your last
 successful data stays available if the retry fails. Re-enter fresh values if
 Aspen continues to reject the session.
 
+Current grades and recent activity refresh every minute. Previous-year and
+individual-quarter views are cached for up to an hour; their last-updated time
+appears beside the grade-period controls. **Refresh** and **Retry saved session**
+force a complete update of every period. Every downloaded period stays available
+for instant switching while a refresh runs or Aspen is unavailable.
+
+Dashboard polling downloads records only when the account's snapshot revision
+changes. Saved snapshots and browser downloads share repeated courses and
+assignments losslessly; existing snapshot files upgrade automatically on their
+next successful save. Versioned static assets are cached; private API responses
+remain uncached.
+
 Each Google account has separate saved grades and an encrypted Aspen session.
 The server verifies the authenticated Aspen student before saving cookies.
 The first successful connection pairs that student with the Google account;
@@ -87,6 +99,9 @@ Recent activity and clears search/type filters. The first feed establishes a qui
 baseline. Repeat checks, reloads, and server restarts do not replay seen activity.
 Sample data and failed or stale feeds do not generate alerts. Temporary push
 failures retry on the next successful refresh; expired subscriptions are removed.
+Push delivery runs in a separate worker after sync saves its results, so slow
+notification services do not block connection controls. Pending deliveries remain
+in the account database and resume after a server restart.
 
 Install the updated requirements and restart Gunicorn to deploy notification
 changes. VAPID keys are generated automatically in `.state/push-vapid.pem`; keep

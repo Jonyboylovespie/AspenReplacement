@@ -1,6 +1,7 @@
 """Request-based, read-only access to the logged-in student's Aspen portal."""
 from datetime import datetime, timezone
 import re
+import time
 import xml.etree.ElementTree as ET
 from urllib.parse import quote, unquote, urljoin
 
@@ -11,6 +12,7 @@ ORIGIN = "https://aspen.darienps.org"
 COOKIE_NAMES = {"JSESSIONID", "VITHAR_CSRF", "deploymentId", "locale", "cf_clearance"}
 ACTIVITY_PREFERENCES = '<?xml version="1.0" encoding="UTF-8"?><preference-set><pref id="dateRange" type="int">4</pref></preference-set>'
 CLASS_LIST_PATH = "/aspen/portalClassList.do?navkey=academics.classes.list"
+HISTORY_REFRESH_SECONDS = 60 * 60
 
 
 class AspenError(Exception):
@@ -312,7 +314,8 @@ def cache_grade_periods(load_period, year="current", quarter="current"):
     def add(snapshot):
         filters = snapshot["gradeFilters"]
         periods[f"{filters['year']}:{filters['quarter']}"] = {
-            "classes": snapshot["classes"], "gradeFilters": filters}
+            "classes": snapshot["classes"], "gradeFilters": filters,
+            "fetchedAt": snapshot.get("syncedAt")}
         warnings.extend(snapshot.get("warnings", []))
 
     add(baseline)
@@ -337,6 +340,11 @@ class AspenClient:
         self.session.cookies.update(cookies)
         self.session.headers.update({"Accept": "application/json", "deploymentId": "x2sis"})
         self.desktop_available = any(c.name == "JSESSIONID" and c.path.startswith("/aspen") for c in cookies)
+        self.history_cache = {}
+        self.history_updated_at = None
+
+    def invalidate_history(self):
+        self.history_updated_at = None
 
     def request(self, method, path, **kwargs):
         url = urljoin(ORIGIN, path)
@@ -371,12 +379,30 @@ class AspenClient:
             raise AuthenticationRequired("Aspen returned its login page. Reconnect your session.") from None
 
     def sync(self, year="current", quarter="current"):
-        shared = {"api": {}, "summaries": {}}
-        return cache_grade_periods(lambda context, term: self.sync_period(context, term, shared), year, quarter)
+        shared = {"api": {}, "summaries": {}, "courses": {}}
+        expired = self.history_updated_at is None or time.monotonic() - self.history_updated_at >= HISTORY_REFRESH_SECONDS
+        history = {} if expired else dict(self.history_cache)
+
+        def load(context, term):
+            key = context, term
+            historical = key not in {("current", "current"), ("current", "all")}
+            if historical and key in history:
+                return history[key]
+            snapshot = self.sync_period(context, term, shared)
+            if historical:
+                history[key] = snapshot
+            return snapshot
+
+        snapshot = cache_grade_periods(load, year, quarter)
+        # Publish the history cache only after all required reads succeed.
+        self.history_cache = history
+        if expired:
+            self.history_updated_at = time.monotonic()
+        return snapshot
 
     def sync_period(self, year="current", quarter="current", shared=None):
         # Reuse assignment/term reads across quarter views within this refresh.
-        # The cache is discarded between refreshes, so data is always re-fetched.
+        # These shared reads expire after each sync; sync() caches historical views separately.
         def read(path, params=None):
             if shared is None:
                 return self.api(path, params)
@@ -454,13 +480,20 @@ class AspenClient:
         result = []
         for course in classes:
             schedule = course["studentScheduleOid"]
-            terms = [academic_fields(term, "oid gradeTermId") for term in read("/gradeTerm/class/" + quote(schedule, safe=""))]
-            assignments = []
-            for term in terms:
-                items = read("/assignments", {"studentOid": student_oid, "studentScheduleOid": schedule,
-                                 "gradeTermOid": term["oid"], "districtContextOid": year})
-                for item in items:
-                    assignments.append({**collect_assignment(item), "termOid": term["oid"], "termName": term["gradeTermId"]})
+            key = year, schedule
+            details = shared.get("courses", {}).get(key) if shared is not None else None
+            if details is None:
+                terms = [academic_fields(term, "oid gradeTermId") for term in read("/gradeTerm/class/" + quote(schedule, safe=""))]
+                assignments = []
+                for term in terms:
+                    items = read("/assignments", {"studentOid": student_oid, "studentScheduleOid": schedule,
+                                     "gradeTermOid": term["oid"], "districtContextOid": year})
+                    assignments.extend({**collect_assignment(item), "termOid": term["oid"], "termName": term["gradeTermId"]}
+                                       for item in items)
+                details = terms, assignments
+                if shared is not None:
+                    shared.setdefault("courses", {})[key] = details
+            terms, assignments = details
             summary = []
             if use_desktop and shared is not None and schedule in shared["summaries"]:
                 summary = shared["summaries"][schedule]

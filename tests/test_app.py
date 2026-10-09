@@ -185,7 +185,7 @@ class StateTests(unittest.TestCase):
                 ({"appSession": "private-cookie-value;bad", "csrf": "csrf"}, "invalid"),
                 ({"appSession": [], "csrf": "private-cookie-value"}, "valid JSESSIONID"),
             ]
-            with patch("app.AspenClient") as aspen_client:
+            with patch("store.AspenClient") as aspen_client:
                 for raw, expected in exports:
                     with self.subTest(expected=expected):
                         response = client.post("/api/session", json={"cookieValues": raw},

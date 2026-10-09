@@ -96,25 +96,19 @@
     while (messages.length > 1 && messages.reduce((total, item) => total + item.content.length, 0) > 40000) messages.splice(0, 2);
     const timeout = setTimeout(() => requestController.abort(), 75000);
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST", signal: requestController.signal,
-        headers: {"Content-Type": "application/json", "X-CSRF-Token": state.csrfToken},
-        body: JSON.stringify({messages}),
+      const data = await betterAspenApi.request("/api/chat", {messages}, {
+        signal: requestController.signal, csrfToken: state.csrfToken, fallback: "Chat could not respond",
       });
-      const data = await response.json();
       if (version !== generation) return;
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          reset(); root.hidden = true; open(false);
-          return;
-        }
-        throw new Error(data.error || "Chat could not respond. Try again.");
-      }
       if (typeof data.reply !== "string" || !data.reply.trim()) throw new Error("No reply arrived. Try again.");
       history = [...messages, {role: "assistant", content: data.reply}];
       message("assistant", data.reply);
     } catch (failure) {
       if (version !== generation) return;
+      if (failure.status === 401 || failure.status === 403) {
+        reset(); root.hidden = true; open(false);
+        return;
+      }
       bubble.remove();
       input.value = question;
       error(failure.name === "AbortError" ? "The reply took too long. Your question is ready to retry." : failure.message);

@@ -4,6 +4,7 @@ from contextlib import closing
 import hashlib
 import json
 import logging
+import threading
 import time
 from urllib.parse import urlsplit
 
@@ -66,6 +67,9 @@ class PushNotifications:
     def __init__(self, accounts, contact):
         self.accounts = accounts
         self.contact = contact
+        self.wake = threading.Event()
+        self.stopped = threading.Event()
+        self.worker = None
         self.key_path = accounts.directory / "push-vapid.pem"
         generated = ec.generate_private_key(ec.SECP256R1()).private_bytes(
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
@@ -87,6 +91,29 @@ class PushNotifications:
                     PRIMARY KEY(subject, student, fingerprint)
                 );
             """)
+
+    def start(self):
+        if self.worker is None:
+            self.worker = threading.Thread(target=self._run, daemon=True, name="aspen-push")
+            self.worker.start()
+            self.wake.set()  # Resume deliveries persisted before a restart.
+
+    def _run(self):
+        while not self.stopped.is_set():
+            self.wake.wait()
+            self.wake.clear()
+            if self.stopped.is_set():
+                return
+            try:
+                self.deliver_pending()
+            except Exception:
+                logger.exception("Background push delivery failed; pending notifications remain saved")
+
+    def stop(self):
+        self.stopped.set()
+        self.wake.set()
+        if self.worker:
+            self.worker.join(timeout=5)
 
     @staticmethod
     def _baseline(db, subject, current):
@@ -149,9 +176,16 @@ class PushNotifications:
             if added:
                 db.execute("UPDATE push_subscriptions SET unread=unread+?,pending=pending+? WHERE subject=? AND student=?",
                            (added, added, subject, student))
-            queued = db.execute("SELECT * FROM push_subscriptions WHERE subject=? AND student=? AND pending>0",
-                                (subject, student)).fetchall()
+        # SQLite is the queue; one worker and one wake flag bound memory/threads.
+        self.wake.set()
+
+    def deliver_pending(self):
+        with closing(self.accounts.connect()) as db:
+            queued = db.execute("SELECT * FROM push_subscriptions WHERE pending>0").fetchall()
         for row in queued:
+            if self.stopped.is_set():
+                return
+            subject = row["subject"]
             # A device may be disabled or its login revoked while another push is being sent.
             with closing(self.accounts.connect()) as db:
                 active = db.execute("SELECT p.pending,p.unread FROM push_subscriptions p JOIN sessions s "

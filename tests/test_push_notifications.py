@@ -3,6 +3,7 @@ from contextlib import closing
 import copy
 import json
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -67,15 +68,18 @@ class PushTests(unittest.TestCase):
                             {"type": "dailyAttendance", "oid": "two", "code": "T"}])
         self.store.client.sync.return_value = changed
         self.store.refresh()
+        self.push.deliver_pending()
         send.assert_called_once()
         payload = json.loads(send.call_args.kwargs["data"])
         self.assertEqual(payload, {"type": "betteraspen:activity", "count": 2, "badge": 2})
         self.assertNotIn("grade", send.call_args.kwargs["data"])
         self.assertIsNone(self.store.error)
         self.store.refresh()
+        self.push.deliver_pending()
         restarted = PushNotifications(self.accounts, "https://localhost")
         self.assertEqual(restarted.public_key, self.push.public_key)
         restarted.changed("alice", changed)
+        restarted.deliver_pending()
         send.assert_called_once()
         self.assertEqual(self.row()["unread"], 2)
         self.client.post("/api/push/read", json={"endpoint": self.device["endpoint"]}, headers=self.headers)
@@ -86,17 +90,22 @@ class PushTests(unittest.TestCase):
         self.store.save({**snapshot(), "activityFeed": {"available": False}})
         self.subscribe()
         self.push.changed("alice", snapshot())
+        self.push.deliver_pending()
         extra = snapshot([{"type": "grade", "oid": "new"}])
         for modified in ({**extra, "mode": "demo"}, {**extra, "student": {"studentOid": "other"}}):
             self.push.changed("alice", modified)
+            self.push.deliver_pending()
         stale = copy.deepcopy(extra)
         stale["activityFeed"]["stale"] = True
         self.push.changed("alice", stale)
+        self.push.deliver_pending()
         unavailable = copy.deepcopy(extra)
         unavailable["activityFeed"]["available"] = False
         self.push.changed("alice", unavailable)
+        self.push.deliver_pending()
         send.assert_not_called()
         self.push.changed("alice", extra)
+        self.push.deliver_pending()
         send.assert_called_once()
 
     @patch("push_notifications.webpush")
@@ -106,16 +115,19 @@ class PushTests(unittest.TestCase):
         bob.post("/api/push/unsubscribe", json={"endpoint": self.device["endpoint"]}, headers=headers)
         self.assertIsNotNone(self.row())
         self.push.changed("bob", snapshot([{"oid": "private"}]))
+        self.push.deliver_pending()
         send.assert_not_called()
         self.client.post("/auth/logout", headers=self.headers)
         self.assertIsNone(self.row())
         self.push.changed("alice", snapshot([{"oid": "new"}]))
+        self.push.deliver_pending()
         send.assert_not_called()
         self.client, self.store, self.headers, self.token = self.login("alice")
         self.subscribe()
         with closing(self.accounts.connect()) as db, db:
             db.execute("UPDATE sessions SET expires=1 WHERE subject='alice'")
         self.push.changed("alice", snapshot([{"oid": "newer"}]))
+        self.push.deliver_pending()
         self.assertIsNone(self.row())
         send.assert_not_called()
 
@@ -129,15 +141,18 @@ class PushTests(unittest.TestCase):
         new = snapshot([{"oid": "new"}])
         with self.assertLogs("push_notifications", level="WARNING"):
             self.push.changed("alice", new)
+            self.push.deliver_pending()
         self.assertEqual(self.row()["pending"], 1)
         send.reset_mock()
         send.side_effect = None
         self.push.changed("alice", new)
+        self.push.deliver_pending()
         self.assertEqual(send.call_count, 2)
         self.assertEqual(self.row()["pending"], 0)
         response.status_code = 410
         send.side_effect = WebPushException("Gone", response=response)
         self.push.changed("alice", snapshot([{"oid": "new"}, {"oid": "next"}]))
+        self.push.deliver_pending()
         self.assertIsNone(self.row())
 
     def test_routes_require_login_csrf_live_account_and_valid_provider(self):
@@ -169,7 +184,40 @@ class PushTests(unittest.TestCase):
             store = Store(directory, on_snapshot=Mock(side_effect=RuntimeError("push unavailable")))
             store.client = Mock()
             store.client.sync.return_value = snapshot()
-            with self.assertLogs("app", level="ERROR"):
+            with self.assertLogs("store", level="ERROR"):
                 store.refresh()
             self.assertIsNone(store.error)
             self.assertEqual(store.snapshot, snapshot())
+
+    @patch("push_notifications.webpush")
+    def test_slow_delivery_does_not_hold_sync_or_connection_controls(self, send):
+        self.subscribe()
+        started = threading.Event()
+        finish = threading.Event()
+        send.side_effect = lambda **kwargs: (started.set(), finish.wait(2))
+        self.push.start()
+        self.store.client = Mock()
+        self.store.client.session = requests.Session()
+        self.store.client.sync.return_value = snapshot([{"oid": "new"}])
+        try:
+            self.store.refresh()
+            self.assertTrue(started.wait(1))
+            self.assertFalse(self.store.syncing)
+            self.assertEqual(self.client.post("/api/disconnect", headers=self.headers).status_code, 200)
+        finally:
+            finish.set()
+            self.push.stop()
+
+    @patch("push_notifications.webpush")
+    def test_worker_restores_pending_deliveries_after_restart(self, send):
+        self.subscribe()
+        self.push.changed("alice", snapshot([{"oid": "new"}]))
+        delivered = threading.Event()
+        send.side_effect = lambda **kwargs: delivered.set()
+        restarted = PushNotifications(self.accounts, "https://localhost")
+        try:
+            restarted.start()
+            self.assertTrue(delivered.wait(1))
+        finally:
+            restarted.stop()
+        self.assertEqual(self.row()["pending"], 0)

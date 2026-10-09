@@ -6,13 +6,14 @@ logger = logging.getLogger(__name__)
 
 
 class RefreshRuntime:
-    def __init__(self, interval, auto_resume=True):
+    def __init__(self, interval, auto_resume=True, on_stop=None):
         self.interval = interval
         self.auto_resume = auto_resume
         self.lock = threading.RLock()
         self.stores = {}
         self.stopped = threading.Event()
         self.thread = None
+        self.on_stop = on_stop
 
     def start(self):
         with self.lock:
@@ -55,3 +56,5 @@ class RefreshRuntime:
                 store.connection_version += 1
         if self.thread:
             self.thread.join(timeout=5)
+        if self.on_stop:
+            self.on_stop()

@@ -20,12 +20,7 @@
   }
 
   async function pushApi(path, body, state = currentState) {
-    const response = await fetch(path, {method: "POST", headers: {
-      "Content-Type": "application/json", "X-CSRF-Token": state.csrfToken
-    }, body: JSON.stringify(body)});
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Notification setup failed. Try again.");
-    return result;
+    return betterAspenApi.request(path, body, {csrfToken: state.csrfToken, fallback: "Notification setup failed"});
   }
 
   function applicationKey(value) {

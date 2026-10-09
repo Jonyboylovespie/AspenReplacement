@@ -199,6 +199,15 @@ class GradePeriodTests(unittest.TestCase):
             self.assertEqual(sum(path == "/users/current" for path, _ in calls), 1)
             calls.clear()
             client.sync()
+            self.assertEqual(sum(path == "/assignments" for path, _ in calls), 2)
+            self.assertFalse(any(params and params.get("districtContext") == "previous" for _, params in calls))
+            calls.clear()
+            client.invalidate_history()
+            client.sync()
+            self.assertEqual(sum(path == "/assignments" for path, _ in calls), 4)
+            calls.clear()
+            with patch("aspen.time.monotonic", return_value=client.history_updated_at + 3600):
+                client.sync()
             self.assertEqual(sum(path == "/assignments" for path, _ in calls), 4)
 
 

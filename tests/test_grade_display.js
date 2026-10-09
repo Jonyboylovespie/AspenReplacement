@@ -1,15 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
 const {test} = require("node:test");
-
-// Load the app's pure formatting helpers without starting the dashboard.
-const source = fs.readFileSync(path.join(__dirname, "../static/app.js"), "utf8");
-const context = vm.createContext({});
-vm.runInContext(source.slice(0, source.indexOf("function setState(")), context);
+const context = require("../static/formatting.js");
 const display = context.classGradeDisplay;
 const gradeClass = context.letterGradeClass;
 

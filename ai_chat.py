@@ -25,6 +25,8 @@ Assignment percentages are earned points / possible points * 100, only with nume
 points; extra credit can exceed 100%. Use these cutoffs for hypothetical target
 letters. Only use reported categories when they effect grade calculations, if they don't, don't mention them at all.
 Stay focused on school grades, assignments, and attendance.
+Each grade period's fetchedAt is its retrieval time; historical views can be older
+than the current-period sync. Use the relevant period's timestamp when discussing freshness.
 """
 
 
@@ -37,7 +39,7 @@ def pick(data, keys):
 
 
 def academic_period(period):
-    result = pick(period, "gradeFilters")
+    result = pick(period, "gradeFilters fetchedAt")
     result["classes"] = []
     for course in period.get("classes", []):
         item = pick(course, "courseName gradeSource")

@@ -108,7 +108,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(self.post(client, headers).status_code, 200)
         instructions = upstream.call_args.kwargs["json"]["instructions"]
         # Catch drift between the AI's scale and the dashboard's actual cutoffs.
-        source = (Path(__file__).resolve().parents[1] / "static/app.js").read_text()
+        source = (Path(__file__).resolve().parents[1] / "static/formatting.js").read_text()
         helper = source.split("function classGradeDisplay(value) {", 1)[1].split("function letterGradeClass", 1)[0]
         bands = re.findall(r'\[(\d+\.\d+), "([A-D][+−]?)"\]', helper)
         self.assertEqual(len(bands), 11)
@@ -212,13 +212,17 @@ class ChatTests(unittest.TestCase):
         client, store, headers = self.login()
         store.chat_lock.acquire()
         try:
-            self.assertEqual(self.post(client, headers).status_code, 429)
+            with patch("app.academic_context") as context:
+                self.assertEqual(self.post(client, headers).status_code, 429)
+                context.assert_not_called()
         finally:
             store.chat_lock.release()
         upstream.assert_not_called()
         upstream.return_value = self.reply()
         self.assertEqual(self.post(client, headers).status_code, 200)
-        self.assertEqual(self.post(client, headers).status_code, 429)
+        with patch("app.academic_context") as context:
+            self.assertEqual(self.post(client, headers).status_code, 429)
+            context.assert_not_called()
         self.assertEqual(upstream.call_count, 1)
 
 
