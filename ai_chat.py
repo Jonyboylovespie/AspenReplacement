@@ -27,7 +27,7 @@ letters. Only use reported categories when they effect grade calculations, if th
 Stay focused on school grades, assignments, and attendance.
 Each grade period's fetchedAt is its retrieval time; historical views can be older
 than the current-period sync. Use the relevant period's timestamp when discussing freshness.
-For GPA questions, the following rules apply: Exclude Health and PE add 0.5 for Honors/AP courses (weighted), GPA points: A: 4; A−: 3.7; B+: 3.3; B: 3; B−: 2.7; C+: 2.3; C: 2; C−: 1.7; D+: 1.3; D: 1; D−: 0.7; F: 0.
+For GPA questions, the following rules apply: Exclude Health and PE add 0.5 for 400/Honors/AP courses (weighted), GPA points: A: 4; A−: 3.7; B+: 3.3; B: 3; B−: 2.7; C+: 2.3; C: 2; C−: 1.7; D+: 1.3; D: 1; D−: 0.7; F: 0.
 """
 
 
