@@ -37,11 +37,6 @@
     node("chat-form").setAttribute("aria-busy", String(pending));
   }
 
-  function error(message = "") {
-    node("chat-error").textContent = message;
-    node("chat-error").hidden = !message;
-  }
-
   function reset() {
     generation++;
     controller?.abort();
@@ -51,7 +46,6 @@
     log.replaceChildren(welcome);
     welcome.hidden = false;
     input.value = "";
-    error();
     controls();
   }
 
@@ -82,7 +76,6 @@
     event.preventDefault();
     const question = input.value.trim();
     if (!question || pending || root.hidden || !state?.snapshot) return;
-    error();
     welcome.hidden = true;
     const bubble = message("user", question);
     input.value = "";
@@ -111,7 +104,6 @@
       }
       bubble.remove();
       input.value = question;
-      error(failure.name === "AbortError" ? "The reply took too long. Your question is ready to retry." : failure.message);
     } finally {
       clearTimeout(timeout);
       if (version === generation) {

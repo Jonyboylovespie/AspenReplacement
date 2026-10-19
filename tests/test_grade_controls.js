@@ -29,8 +29,6 @@ test("an access error keeps saved-session retry available and clears after recov
   assert.equal(nodes.get("retry-session").textContent, "Retrying saved session…");
   context.setState({...rejected, connected: true, needsAuth: false, error: null});
   assert.equal(nodes.get("saved-connection").hidden, true);
-  assert.equal(nodes.get("connection-error").hidden, true);
-  assert.equal(nodes.get("error").hidden, true);
   context.setState({...rejected, canRetry: false, error: null});
   assert.equal(nodes.get("saved-connection").hidden, true);
   for (const id of ["retry-session", "refresh", "disconnect"]) assert.equal(nodes.get(id).disabled, true);

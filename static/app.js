@@ -75,13 +75,6 @@ function element(tag, text) {
   return node;
 }
 
-function showError(message) {
-  $("error").textContent = message || "";
-  $("error").hidden = !message;
-  $("connection-error").textContent = message || "";
-  $("connection-error").hidden = !message;
-}
-
 function api(path, body) {
   return betterAspenApi.request(path, body, {csrfToken: currentState?.csrfToken});
 }
@@ -97,7 +90,6 @@ function mergeState(next) {
 
 function setState(state) {
   const previousPeriod = gradePeriod();
-  const previousError = currentState?.error;
   currentState = {...state, snapshot: gradePeriodSnapshot(state.snapshot)};
   const snapshot = currentState.snapshot;
   const demo = snapshot?.mode === "demo";
@@ -133,8 +125,6 @@ function setState(state) {
     $(id).disabled = disabled || !state.signedIn;
   }
   $("connect-aspen").textContent = busy ? "Connecting…" : "Save and connect";
-  if (state.error) showError(state.error);
-  else if (previousError) showError("");
   $("warnings").replaceChildren(...(snapshot?.warnings || []).map((warning) => element("li", warning)));
   $("notice").hidden = !(snapshot?.warnings?.length);
   $("notice-title").textContent = `${snapshot?.warnings?.length || 0} data note${snapshot?.warnings?.length === 1 ? "" : "s"}`;
@@ -165,14 +155,12 @@ function setState(state) {
 async function action(path, body = {}) {
   if (busy || currentState?.syncing) return false;
   busy = true;
-  showError("");
   if (currentState) setState(currentState);
   try {
     const state = await api(`${path}?compact=1`, body);
     mergeState(state);
     return true;
-  } catch (error) {
-    showError(error.message);
+  } catch {
     return false;
   } finally {
     busy = false;
@@ -184,7 +172,6 @@ function changeGradePeriod(yearChanged) {
   const year = $("grade-year").value;
   const quarter = yearChanged ? (year === "previous" ? "all" : "current") : $("grade-quarter").value;
   if (!currentState?.snapshot?.gradePeriods?.[`${year}:${quarter}`]) {
-    showError("That period is not cached. Refresh Aspen to download all school years and quarters.");
     renderGradeFilters();
     return;
   }
@@ -324,7 +311,7 @@ async function poll() {
       mergeState(await api(`/api/state?${query}`));
     }
   }
-  catch (error) { showError(`The server is unavailable: ${error.message}`); }
+  catch { /* Keep the current view and retry silently when the server is unavailable. */ }
   setTimeout(poll, currentState?.syncing ? 1000 : 5000);
 }
 
@@ -336,7 +323,6 @@ function startDashboard() {
     }
     if (!currentState?.signedIn && !currentState?.googleConfigured) {
       event.preventDefault();
-      showError("Google sign-in hasn't been configured on this server yet.");
       return;
     }
 
@@ -345,7 +331,7 @@ function startDashboard() {
     try {
       await api("/auth/logout", {});
       location.assign("/");
-    } catch (error) { showError(error.message); }
+    } catch { /* Keep the current session when sign-out fails. */ }
   });
   $("cookie-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -405,7 +391,6 @@ function startDashboard() {
 
   if (new URLSearchParams(location.search).get("login") === "failed") {
     $("connection-dialog").showModal();
-    showError("Google sign-in couldn't finish. Try signing in again.");
   }
   poll();
 }

@@ -781,15 +781,6 @@ body[data-mode='dark'] .attendance-layout .attendance-unexcused {
   filter: brightness(0.92);
 }
 
-.alert {
-  margin-bottom: 21px;
-  padding: 14px 18px;
-  border: 1px solid var(--accent);
-  border-left-width: 5px;
-  background: var(--tint);
-  font-size: 0.78rem;
-}
-
 .notice {
   margin-bottom: 22px;
   color: var(--muted);
@@ -1821,7 +1812,7 @@ body[data-mode='dark'] .course-card {
   padding-right: 8px;
 }
 
-.chat-status, .chat-error {
+.chat-status {
   flex-shrink: 0;
   margin: 0;
   padding: 8px 20px;
@@ -1831,11 +1822,6 @@ body[data-mode='dark'] .course-card {
 
 .chat-status {
   color: var(--muted);
-}
-
-.chat-error {
-  color: var(--ink);
-  background: var(--tint);
 }
 
 .chat-form {
