@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import Store
 from helpers import create_test_app as create_app
 from aspen import (AspenError, AuthenticationRequired, AspenClient, form_fields, parse_cookies,
-                   read_activity, read_attendance, read_average_summary, read_class_list)
+                   read_activity, read_attendance, read_average_summary, read_class_list,
+                   read_schedule_matrix)
 
 
 class ScraperTests(unittest.TestCase):
@@ -130,12 +131,58 @@ class ScraperTests(unittest.TestCase):
         with patch.object(client, "api", side_effect=[{"personOid": "person"}, {"studentOid": "own", "schoolOid": "school", "name": "Test"}, [], []]), \
              patch.object(client, "request", side_effect=[SimpleNamespace(text='<form name="classListForm"></form>'),
                         SimpleNamespace(text=self.attendance_html()),
-                        SimpleNamespace(text='<recent-activity-list daterange="4" grades="true" attendance="true"><recent-activity studentoid="own"><gradebookScore date="2026-10-01" grade="0"/></recent-activity></recent-activity-list>')]) as request:
+                        SimpleNamespace(text='<recent-activity-list daterange="4" grades="true" attendance="true"><recent-activity studentoid="own"><gradebookScore date="2026-10-01" grade="0"/></recent-activity></recent-activity-list>'),
+                        SimpleNamespace(text=self.schedule_matrix_html())]) as request:
             data = client.sync_period()
         self.assertTrue(data["attendance"]["available"])
         self.assertEqual(data["activityFeed"]["events"][0]["grade"], "0")
+        self.assertEqual(data["schedule"]["days"]["A"][0]["courseName"], "400 AP Microeconomics")
         self.assertEqual(request.call_args_list[0].args[1], "/aspen/portalClassList.do?navkey=academics.classes.list")
-        self.assertEqual(request.call_args_list[-1].kwargs["params"]["preferences"].count('id="dateRange"'), 1)
+        self.assertEqual(request.call_args_list[2].kwargs["params"]["preferences"].count('id="dateRange"'), 1)
+        self.assertEqual(request.call_args_list[-1].args[1], "/aspen/studentScheduleMatrix.do?navkey=myInfo.sch.matrix")
+
+    @staticmethod
+    def schedule_matrix_html():
+        """Aspen's matrix markup, trimmed to days A and B and periods 1–4, 9 and advisory."""
+        def course(span, number, name, teacher, room, periods):
+            return (f'<td style="background-color:#F5F5DC;" rowspan="{span}"><table><tr><td align="center">'
+                    f'{number}<br>{name}<br>{teacher}<br>{room}<br> </td></tr>'
+                    f'<tr><td align="right" style="font-weight: bold;"> {periods} </td></tr></table></td>')
+        def label(text):
+            return f'<td><table><tr><th nowrap> {text} </th></tr></table></td>'
+        empty = '<td style="background-color:#FFFFFF;" rowspan="1"> </td>'
+        return ('<form name="scheduleMatrixForm"><table cellspacing="1"><tbody>'
+                '<tr class="listHeader"><th>&nbsp;</th><th> A&nbsp;-&nbsp;A </th><th> B&nbsp;-&nbsp;B </th></tr>'
+                '<tr>' + label("1-Period 1") + course(2, "HST502-520A-002", "400 AP Microeconomics", "Balazs, Stephen", "G209", "2(A-H)")
+                + course(2, "MUS603-599A-003", "400 Wind Ensemble Honors PT", "Grauer, Jonathan", "F013", "1(A-C,") + '</tr>'
+                '<tr>' + label("2-Period 2") + '</tr>'
+                '<tr>' + label("3-Period 3") + course(1, "MUS603-599A-003", "400 Wind Ensemble Honors PT", "Grauer, Jonathan", "F013", "1(A-C,")
+                + empty + '</tr>'
+                '<tr>' + label("4-Period 4") + course(1, "SCI714-544A-001", "400 AP Physics C: Electricity and Magnetism", "Nesteruk, Kurt", "C107", "1(D,H) 8(A")
+                + course(1, "PE314-590X-012", "12th Grade Health", "Chase, Timothy", "", "6(B,D,F,H)") + '</tr>'
+                '<tr>' + label("9-Period 9") + empty + empty + '</tr>'
+                '<tr>' + label("10-Period 10") + course(1, "HRM101-102X-039", "Advisory 12", "Casey, Kelly", "B315", "10(A-H)") * 2 + '</tr>'
+                '</tbody></table></form>')
+
+    def test_schedule_matrix_spans_splits_and_ignored_periods(self):
+        days = read_schedule_matrix(self.schedule_matrix_html())["days"]
+        self.assertEqual(set(days), {"A", "B"})
+        micro = {"courseName": "400 AP Microeconomics", "teacherName": "Balazs, Stephen", "room": "G209"}
+        wind = {"courseName": "400 Wind Ensemble Honors PT", "teacherName": "Grauer, Jonathan", "room": "F013"}
+        self.assertEqual(days["A"][:4], [micro, micro, wind,
+                                         {"courseName": "400 AP Physics C: Electricity and Magnetism",
+                                          "teacherName": "Nesteruk, Kurt", "room": "C107"}])
+        self.assertEqual(days["B"][:4], [wind, wind, None,
+                                         {"courseName": "12th Grade Health", "teacherName": "Chase, Timothy", "room": ""}])
+        # Periods 5–8 are absent from this fixture; period 9 and advisory are never read.
+        self.assertEqual(days["A"][4:], [None] * 4)
+        self.assertNotIn("Advisory 12", json.dumps(days))
+
+    def test_schedule_matrix_requires_desktop_session_and_grid(self):
+        with self.assertRaises(AuthenticationRequired):
+            read_schedule_matrix("<html>Login</html>")
+        with self.assertRaises(AspenError):
+            read_schedule_matrix('<form name="scheduleMatrixForm"><table><tr><td>Nothing</td></tr></table></form>')
 
 
 class StateTests(unittest.TestCase):

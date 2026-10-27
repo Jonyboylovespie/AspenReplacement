@@ -4,7 +4,6 @@ import atexit
 from datetime import timedelta
 from functools import cache
 import hashlib
-import logging
 import os
 from pathlib import Path
 import re
@@ -28,11 +27,10 @@ from ai_chat import ChatError, academic_context, ask, validate_messages
 from runtime import RefreshRuntime
 from push_notifications import PushNotifications
 from aspen import AspenError, CookieImportError, demo_snapshot, cookies_from_values
+from dhs_calendar import ScheduleCalendar
 from store import REFRESH_SECONDS, Store
-from scripts.generate_schedule_data import main as generate_schedule_data
 
 ROOT = Path(__file__).resolve().parent
-logger = logging.getLogger(__name__)
 
 def create_app(directory=None, config=None):
     if not (config and config.get("TESTING")):
@@ -56,13 +54,6 @@ def create_app(directory=None, config=None):
     )
     if config:
         app.config.update(config)
-    if not app.config.get("TESTING") and app.config.get("SCHEDULE_REFRESH", True):
-        try:
-            generate_schedule_data()
-        except Exception:
-            # Keep the last generated asset when DHS or Adobe is temporarily
-            # unavailable; the dashboard can still use its cached rotation.
-            logger.warning("Unable to refresh DHS schedule data at startup", exc_info=True)
     ai_endpoint = urlsplit(app.config["AI_API_ENDPOINT"])
     if (ai_endpoint.scheme not in {"https", "http"} or not ai_endpoint.netloc
             or ai_endpoint.username or ai_endpoint.password or ai_endpoint.fragment
@@ -84,6 +75,8 @@ def create_app(directory=None, config=None):
     cipher = Fernet(private_file(directory / "session-key", Fernet.generate_key()))
     runtime = RefreshRuntime(REFRESH_SECONDS, auto_resume=app.config["START_REFRESH"], on_stop=push.stop)
     app.extensions["accounts"] = accounts
+    schedule_calendar = ScheduleCalendar(directory, auto_refresh=app.config["START_REFRESH"])
+    app.extensions["schedule_calendar"] = schedule_calendar
     app.extensions["refresh_runtime"] = runtime
     proxy_hops = int(os.environ.get("BETTERASPEN_PROXY_HOPS", "0"))
     if proxy_hops:
@@ -206,6 +199,10 @@ def create_app(directory=None, config=None):
                            needsAuth=True, syncing=False, stale=True, error=None,
                            googleConfigured=bool(app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]))
         return jsonify(view())
+
+    @app.get("/api/schedule")
+    def schedule():
+        return jsonify(schedule_calendar.view())
 
     @app.post("/api/push/subscribe")
     def push_subscribe():

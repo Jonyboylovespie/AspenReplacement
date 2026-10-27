@@ -1,13 +1,10 @@
 """Request-based, read-only access to the logged-in student's Aspen portal."""
 from datetime import datetime, timezone
-from datetime import date, timedelta
 import json
 import re
 import time
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from urllib.parse import quote, unquote, urljoin
-import json
 
 from bs4 import BeautifulSoup
 import requests
@@ -16,168 +13,10 @@ ORIGIN = "https://aspen.darienps.org"
 COOKIE_NAMES = {"JSESSIONID", "VITHAR_CSRF", "deploymentId", "locale", "cf_clearance"}
 ACTIVITY_PREFERENCES = '<?xml version="1.0" encoding="UTF-8"?><preference-set><pref id="dateRange" type="int">4</pref></preference-set>'
 CLASS_LIST_PATH = "/aspen/portalClassList.do?navkey=academics.classes.list"
+# Aspen's default matrix term is the current quarter.
+SCHEDULE_MATRIX_PATH = "/aspen/studentScheduleMatrix.do?navkey=myInfo.sch.matrix"
+SCHEDULE_PERIODS = range(1, 9)
 HISTORY_REFRESH_SECONDS = 60 * 60
-
-
-def _schedule_date(value):
-    """Return an ISO date from the date formats Aspen uses in schedule data."""
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, (int, float)):
-        try:
-            return datetime.fromtimestamp(value / 1000, timezone.utc).date().isoformat()
-        except (OverflowError, OSError, ValueError):
-            return None
-    text = str(value or "").strip()
-    match = re.search(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", text)
-    if not match:
-        return None
-    try:
-        return date(int(match[1]), int(match[2]), int(match[3])).isoformat()
-    except ValueError:
-        return None
-
-
-def _schedule_label(item):
-    """Find a human schedule/letter-day label without depending on one Aspen build."""
-    if not isinstance(item, dict):
-        return ""
-    for key in ("letterDay", "letter_day", "cycleDay", "cycle_day", "rotation", "dayLabel",
-                "scheduleLabel", "scheduleName", "dayName", "day", "label", "name", "summary"):
-        value = item.get(key)
-        if isinstance(value, str) and value.strip():
-            text = value.strip()
-            if _schedule_date(text) is None:
-                return text
-    return ""
-
-
-def normalize_schedule(raw, classes=None):
-    """Normalize Aspen schedule responses into date, letter-day, and period rows."""
-    classes = classes or []
-    by_oid = {c.get("studentScheduleOid"): c for c in classes if c.get("studentScheduleOid")}
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except (TypeError, ValueError):
-            raw = [raw]
-    if isinstance(raw, dict):
-        raw = raw.get("days", raw.get("schedule", raw.get("events", raw.get("data", []))))
-    if not isinstance(raw, list):
-        raw = []
-    days = {}
-    def add_day(value, label="", sections=None):
-        day = _schedule_date(value)
-        if not day:
-            return
-        row = days.setdefault(day, {"date": day, "label": "", "unique": False, "periods": []})
-        if label and not row["label"]:
-            row["label"] = label
-        if not isinstance(sections, list):
-            sections = []
-        for section in sections:
-            if isinstance(section, str):
-                section = {"name": section}
-            if not isinstance(section, dict):
-                continue
-            oid = section.get("studentScheduleOid") or section.get("sectionOid") or section.get("oid")
-            course = by_oid.get(oid, {})
-            period = section.get("period") or section.get("periodNumber") or section.get("order") or ""
-            name = section.get("courseName") or section.get("name") or section.get("title") or course.get("courseName", "")
-            row["periods"].append({"period": str(period), "courseName": name,
-                                    "teacherName": section.get("teacherName") or course.get("teacherName", ""),
-                                    "meetingTime": section.get("meetingTime") or course.get("meetingTime", ""),
-                                    "startTime": section.get("startTime") or course.get("startTime", ""),
-                                    "endTime": section.get("endTime") or course.get("endTime", ""),
-                                    "studentScheduleOid": oid})
-    for item in raw:
-        if isinstance(item, str):
-            try:
-                decoded = json.loads(item)
-            except (TypeError, ValueError):
-                decoded = None
-            if isinstance(decoded, dict):
-                item = decoded
-            else:
-                day = _schedule_date(item)
-                label = ""
-                if day:
-                    remainder = item.replace(day, "", 1).strip(" -:|,\t")
-                    if remainder and len(remainder) <= 40:
-                        label = remainder
-                add_day(day, label)
-                continue
-            continue
-        if not isinstance(item, dict):
-            continue
-        day = item.get("date") or item.get("dayDate") or item.get("calendarDate") or item.get("startDate")
-        sections = item.get("periods") or item.get("sections") or item.get("classes") or item.get("models")
-        if not sections and any(k in item for k in ("todayModels", "yesterdayModels", "tomorrowModels")):
-            for key in ("yesterdayModels", "todayModels", "tomorrowModels"):
-                nested = item.get(key) or []
-                for section in nested:
-                    add_day(day, _schedule_label(item), [section])
-        else:
-            add_day(day, _schedule_label(item), sections)
-    result = sorted(days.values(), key=lambda item: item["date"])
-    for row in result:
-        row["periods"].sort(key=lambda p: (int(p["period"]) if str(p["period"]).isdigit() else 999, p["courseName"]))
-        row["unique"] = bool(row["label"] and not re.fullmatch(r"[A-Za-z]", row["label"].strip()))
-    labels = []
-    for row in result:
-        if row["label"] and row["label"] not in labels:
-            labels.append(row["label"])
-    return {"available": bool(result), "days": result, "letterDays": labels,
-            "fetchedAt": datetime.now(timezone.utc).isoformat()}
-
-
-def empty_schedule(error):
-    return {"available": False, "days": [], "letterDays": [], "error": error}
-
-
-def dhs_rotation_dates():
-    """Return one representative DHS date for each letter day."""
-    try:
-        payload = json.loads((Path(__file__).resolve().parent / "static" / "schedule-data.json").read_text())
-        result = {}
-        for value, label in payload.get("calendar", {}).items():
-            letter = re.match(r"([A-H]) Day", label or "")
-            if letter and letter[1] not in result:
-                result[letter[1]] = (value, label)
-        return result
-    except (OSError, json.JSONDecodeError, TypeError):
-        return {}
-
-
-def merge_schedule_days(target, source):
-    """Merge normalized schedule days while preserving each day only once."""
-    by_date = {item["date"]: item for item in target}
-    for item in source:
-        current = by_date.setdefault(item["date"], {**item, "periods": []})
-        if item.get("label") and not current.get("label"):
-            current["label"] = item["label"]
-        if item.get("periods"):
-            current["periods"] = item["periods"]
-        current["unique"] = bool(current.get("label") and not re.fullmatch(r"[A-Za-z]", current["label"].strip()))
-    return sorted(by_date.values(), key=lambda item: item["date"])
-
-
-def schedule_from_classes(classes):
-    """Provide a useful current order when a district hides schedule APIs."""
-    periods = []
-    for index, course in enumerate(classes or []):
-        periods.append({"period": str(course.get("period") or course.get("periodNumber") or index + 1),
-                        "courseName": course.get("courseName", ""),
-                        "teacherName": course.get("teacherName", ""),
-                        "meetingTime": course.get("meetingTime", ""),
-                        "studentScheduleOid": course.get("studentScheduleOid")})
-    days = [{"date": (date.today() + timedelta(days=index)).isoformat(), "label": label, "unique": False,
-             "periods": periods} for index, label in enumerate("ABCDEFGH")] if periods else []
-    return {"available": bool(periods), "days": days,
-            "letterDays": [], "fallback": True,
-            "note": "Aspen did not expose letter-day dates; showing the imported class order across the rotation."}
 
 
 class AspenError(Exception):
@@ -432,6 +271,62 @@ def read_attendance(html):
             "partial": partial, "records": sorted(records, key=lambda r: r["date"], reverse=True)}
 
 
+def read_schedule_matrix(html):
+    """Read the A–H rotation from Aspen's schedule matrix as eight period slots per day."""
+    soup = BeautifulSoup(html, "html.parser")
+    if not soup.find("form", attrs={"name": "scheduleMatrixForm"}):
+        raise AuthenticationRequired("Reconnect the desktop Aspen session to load your schedule.")
+    header = next((row for row in soup.find_all("tr")
+                   if sum(bool(re.fullmatch(r"[A-H] - .+", text_of(c)))
+                          for c in row.find_all(["td", "th"], recursive=False)) >= 2), None)
+    if not header:
+        raise AspenError("Aspen's schedule matrix could not be read.")
+    table = header.find_parent("table")
+    letters = {}
+    for column, cell in enumerate(header.find_all(["td", "th"], recursive=False)):
+        match = re.fullmatch(r"([A-H]) - .+", text_of(cell))
+        if match:
+            letters[column] = match[1]
+    days = {letter: [None] * len(SCHEDULE_PERIODS) for letter in letters.values()}
+    found, carried = False, {}
+    for row in table.find_all("tr"):
+        if row is header or row.find_parent("table") != table:
+            continue
+        # A class spanning two periods is one cell with rowspan="2"; carry it
+        # into the rows it covers so every period sees its class.
+        cells, spans, column = {c: cell for c, (_, cell) in carried.items()}, {}, 0
+        for cell in row.find_all(["td", "th"], recursive=False):
+            while column in carried:
+                column += 1
+            cells[column] = cell
+            if int(cell.get("rowspan", 1) or 1) > 1:
+                spans[column] = (int(cell["rowspan"]) - 1, cell)
+            column += int(cell.get("colspan", 1) or 1)
+        carried = {c: (left - 1, cell) for c, (left, cell) in carried.items() if left > 1} | spans
+        period = re.fullmatch(r"\d+-Period (\d+)", text_of(cells[0])) if 0 in cells else None
+        if not period or int(period[1]) not in SCHEDULE_PERIODS:
+            continue
+        found = True
+        for column, letter in letters.items():
+            days[letter][int(period[1]) - 1] = schedule_course(cells.get(column))
+    if not found:
+        raise AspenError("Aspen's schedule matrix did not include periods 1–8.")
+    return {"available": True, "days": days}
+
+
+def schedule_course(cell):
+    """Read one matrix cell: section, course, teacher and room are separated by <br>."""
+    content = cell.find("td") if cell else None
+    if not content:
+        return None
+    lines = [text_of(BeautifulSoup(part, "html.parser"))
+             for part in re.split(r"<br\s*/?>", content.decode_contents())]
+    lines += [""] * (4 - len(lines))
+    if not lines[1]:
+        return None
+    return {"courseName": lines[1], "teacherName": lines[2], "room": lines[3]}
+
+
 def read_activity(xml, student_oid):
     try:
         if "<!DOCTYPE" in xml.upper() or "<!ENTITY" in xml.upper():
@@ -582,6 +477,7 @@ class AspenClient:
         warnings = []
         attendance = {"available": False, "records": [], "error": "Import the /aspen desktop cookie to load attendance."}
         activity = {"available": False, "events": [], "error": "Import the /aspen desktop cookie to load recent activity."}
+        schedule = {"available": False, "days": {}, "error": "Import the /aspen desktop cookie to load your schedule."}
         years = [{"value": "current", "label": "Current school year"},
                  {"value": "previous", "label": "Previous school year"}]
         if year not in {option["value"] for option in years}:
@@ -605,39 +501,6 @@ class AspenClient:
                            "schoolOid": school["oid"], "districtContext": year}) or [])
         if quarter not in {"current", "all"} and quarter not in {term["oid"] for term in quarters}:
             raise AspenError("That quarter is not available for this school year. Choose another quarter.")
-        # Rotation dates and bell times come from the generated DHS asset in
-        # static/schedule-data.js; Aspen is used only for the student roster.
-        schedule = empty_schedule("DHS rotation data is loaded in the browser.")
-        if year == "current":
-            rotation = dhs_rotation_dates()
-            days = []
-            for letter, (date_value, label) in rotation.items():
-                try:
-                    detail = read("/studentSchedule", {"studentOid": student_oid,
-                                                        "schoolOid": student["schoolOid"], "date": date_value})
-                except (AspenError, AssertionError, StopIteration):
-                    detail = None
-                if not detail:
-                    try:
-                        detail = read("/studentSchedule", {"studentOid": student_oid,
-                                                            "schoolOid": student["schoolOid"],
-                                                            "date": datetime.strptime(date_value, "%Y-%m-%d").strftime("%m/%d/%Y")})
-                    except (AspenError, AssertionError, StopIteration):
-                        detail = None
-                if isinstance(detail, dict):
-                    detail = [detail]
-                sections = []
-                for item in detail or []:
-                    if not isinstance(item, dict):
-                        continue
-                    sections.extend(item.get("todayModels") or item.get("sections") or item.get("models") or [])
-                if sections:
-                    normalized = normalize_schedule([{"date": date_value, "label": label, "sections": sections}], classes)
-                    days.extend(normalized["days"])
-            if days:
-                schedule = {"available": True, "days": days,
-                            "letterDays": list(rotation),
-                            "source": "DHS rotation + Aspen student schedule"}
         canonical = {}
         use_desktop = self.desktop_available and year == "current"
         if use_desktop and quarter == "current":
@@ -650,23 +513,27 @@ class AspenClient:
         elif not self.desktop_available:
             warnings.append("The desktop cookie is missing. Course averages are from the API and may differ from Aspen's desktop view.")
         if shared is not None and "features" in shared:
-            attendance, activity = shared["features"]
+            attendance, activity, schedule = shared["features"]
         elif self.desktop_available:
             for name, path, parser in [
                 ("Attendance", "/aspen/studentAttendanceList.do?navkey=myInfo.att.list", read_attendance),
                 ("Recent activity", "/aspen/studentRecentActivityWidget.do", lambda body: read_activity(body, student_oid)),
+                ("Schedule", SCHEDULE_MATRIX_PATH, read_schedule_matrix),
             ]:
                 try:
                     params = {"preferences": ACTIVITY_PREFERENCES} if name == "Recent activity" else None
                     data = parser(self.request("GET", path, params=params).text)
                     data["fetchedAt"] = datetime.now(timezone.utc).isoformat()
                 except AspenError as error:
-                    data = {"available": False, "error": str(error), "records" if name == "Attendance" else "events": []}
+                    data = {"available": False, "error": str(error),
+                            **{"Attendance": {"records": []}, "Recent activity": {"events": []}, "Schedule": {"days": {}}}[name]}
                     warnings.append(f"{name}: {error}")
                 if name == "Attendance":
                     attendance = data
                     if data.get("partial"):
                         warnings.append("Attendance is a partial Aspen page; additional records are not included.")
+                elif name == "Schedule":
+                    schedule = data
                 else:
                     activity = data
                     if data.get("unsupportedTypes"):
@@ -674,7 +541,7 @@ class AspenClient:
                     if data.get("available") and not (data["gradesEnabled"] and data["attendanceEnabled"]):
                         warnings.append("Aspen has disabled grades or attendance in its recent activity feed.")
         if shared is not None:
-            shared["features"] = attendance, activity
+            shared["features"] = attendance, activity, schedule
         result = []
         for course in classes:
             schedule_oid = course["studentScheduleOid"]
@@ -721,6 +588,10 @@ class AspenClient:
                                              [{"value": term["oid"], "label": term["gradeTermId"]} for term in quarters]},
                 "syncedAt": datetime.now(timezone.utc).isoformat(),
                 "mode": "live", "warnings": warnings, "timeoutInSeconds": user.get("timeoutInSeconds")}
+
+
+DEMO_ROTATION = {"A": (2, 4, 6, 8), "B": (1, 3, 5, 7), "C": (4, 2, 8, 6), "D": (3, 1, 7, 5),
+                 "E": (2, 8, 4, 6), "F": (1, 7, 3, 5), "G": (4, 6, 2, 8), "H": (3, 5, 1, 7)}
 
 
 def demo_snapshot(year="current", quarter="current"):
@@ -791,14 +662,14 @@ def demo_period(year="current", quarter="current"):
             course["averageSummary"] = []
         course["assignments"] = [item for item in course["assignments"]
                                  if quarter in {"current", "all"} or item["termOid"] == quarter]
-    demo_days = []
-    for offset, label in enumerate(("A", "B", "C", "D", "E", "A", "B", "Assembly")):
-        day = date(2026, 9, 21) + timedelta(days=offset)
-        demo_days.append({"date": day.isoformat(), "label": label, "unique": label == "Assembly",
-                          "periods": [{"period": str(index + 1), "courseName": course["courseName"],
-                                       "teacherName": course["teacherName"], "meetingTime": course["meetingTime"],
-                                       "studentScheduleOid": course["studentScheduleOid"]}
-                                      for index, course in enumerate(classes)]})
+    # Each letter day meets four of the eight periods, two periods per block.
+    demo_schedule = {letter: [None] * len(SCHEDULE_PERIODS) for letter in DEMO_ROTATION}
+    for letter, periods in DEMO_ROTATION.items():
+        for block, period in enumerate(periods):
+            if period <= len(subjects):
+                course = {"courseName": subjects[period - 1][0], "teacherName": subjects[period - 1][1],
+                          "room": f"Room {100 + period}"}
+                demo_schedule[letter][block * 2:block * 2 + 2] = [course, course]
     return {"mode": "demo", "student": {"name": "Alex Morgan", "studentOid": "demo"},
             "gradeFilters": {"year": year, "quarter": quarter, "years": years, "quarters": quarters},
             "syncedAt": datetime.now(timezone.utc).isoformat(), "warnings": ["Sample data, not your Aspen grades."],
@@ -807,6 +678,5 @@ def demo_period(year="current", quarter="current"):
                            "records": [{"oid": "demo-att-1", "date": "2026-09-25", "code": "T-E", "reason": "Appointment"},
                                        {"oid": "demo-att-2", "date": "2026-09-22", "code": "A-E", "reason": "Sick"}]},
             "activityFeed": {"available": True, "scope": "Last 60 days", "datePrecision": "day", "events": events},
-            "schedule": {"available": True, "days": demo_days, "letterDays": ["A", "B", "C", "D", "E", "Assembly"],
-                          "fetchedAt": datetime.now(timezone.utc).isoformat()},
+            "schedule": {"available": True, "days": demo_schedule, "fetchedAt": datetime.now(timezone.utc).isoformat()},
             "classes": classes}

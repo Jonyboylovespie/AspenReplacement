@@ -5,9 +5,16 @@ Run the server with:
 .venv/bin/gunicorn -c gunicorn.conf.py 'app:create_app()'
 ```
 
-On startup, BetterAspen refreshes the DHS rotation asset from the official
-calendar and bell-schedule links. If DHS is unavailable, the last generated
-asset remains in place.
+The Schedule tab combines your A–H rotation from Aspen's schedule matrix
+(periods 1–8, read with the `/aspen` desktop cookie) with each day's DHS
+schedule type. Day types are regenerated in the background every six hours:
+the bundled calendar in `schedule/` is the starting point, the DHS one-page
+letter-day PDF supplies letter and advisory days (this needs `pdftotext` from
+poppler-utils), and the district website calendar applies changes made during
+the year, such as moved letter days, PLC schedules, and closures. Each source's
+last successful copy is kept in the state directory, so a site outage never
+drops the other. Bell times come from `schedule/bell-schedule.json`. Both files
+in `schedule/` are copied from Jupitr; update them for each new school year.
 
 Gunicorn binds to `0.0.0.0:5173` and runs one process with eight threads. Keep
 one worker: account stores and background refresh live in that process. Refresh
@@ -43,7 +50,7 @@ cookies in that tab to find `/app`. The API page is not a sign-in flow; if
 BetterAspen rejects the session, sign in again through **Students and Staff
 Login** using the sign-in link above.
 Open Aspen's desktop portal and copy the separate
-`JSESSIONID` with path `/aspen` to enable desktop averages, attendance, and
+`JSESSIONID` with path `/aspen` to enable desktop averages, attendance, your schedule, and
 recent activity. If `cf_clearance` is present, enter its value too.
 Click **Save and connect**. If Aspen goes down or denies access, use **Retry saved
 session** in Connection (or Refresh) to try the saved cookies again. Your last
