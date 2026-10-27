@@ -256,7 +256,7 @@ function tickSchedule(now = new Date()) {
   scheduleRenderKey = key;
   const description = !calendar ? scheduleCalendarError || "Loading the DHS calendar…" :
     !day ? "No upcoming school days are on the DHS calendar." :
-    `${day.today ? "Today" : "Next school day"} · ${new Date(`${day.date}T12:00`).toLocaleDateString(undefined,
+    `${day.today ? "" : "Next school day · "}${new Date(`${day.date}T12:00`).toLocaleDateString(undefined,
       {weekday: "long", month: "long", day: "numeric"})} · ${day.dayType}`;
   $("schedule-day-type").textContent = description;
   const colors = scheduleColors(matrix);
@@ -299,9 +299,10 @@ function renderScheduleRotation() {
   body.replaceChildren();
   if (!days) {
     $("schedule-rotation-note").textContent = (!schedule?.available && schedule?.error) || "Aspen has not returned your schedule yet.";
+    $("schedule-rotation-note").hidden = false;
     return;
   }
-  $("schedule-rotation-note").textContent = "Periods 1–8 from Aspen’s schedule matrix";
+  $("schedule-rotation-note").hidden = true;
   const letters = [..."ABCDEFGH"].filter(letter => days[letter]);
   const today = scheduleLetter(scheduleCalendar?.calendar?.[scheduleDateKey(new Date())]);
   const colors = scheduleColors(days);
