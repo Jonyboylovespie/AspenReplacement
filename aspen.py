@@ -13,8 +13,9 @@ ORIGIN = "https://aspen.darienps.org"
 COOKIE_NAMES = {"JSESSIONID", "VITHAR_CSRF", "deploymentId", "locale", "cf_clearance"}
 ACTIVITY_PREFERENCES = '<?xml version="1.0" encoding="UTF-8"?><preference-set><pref id="dateRange" type="int">4</pref></preference-set>'
 CLASS_LIST_PATH = "/aspen/portalClassList.do?navkey=academics.classes.list"
-# Aspen's default matrix term is the current quarter.
-SCHEDULE_MATRIX_PATH = "/aspen/studentScheduleMatrix.do?navkey=myInfo.sch.matrix"
+# Aspen serves the matrix only after this "Current Schedule" navigation, which
+# redirects to it. Its default term is the current quarter.
+SCHEDULE_PATH = "/aspen/studentScheduleContextList.do?navkey=myInfo.sch.list"
 SCHEDULE_PERIODS = range(1, 9)
 HISTORY_REFRESH_SECONDS = 60 * 60
 
@@ -419,8 +420,9 @@ class AspenClient:
             raise AspenError("Aspen could not be reached. Your previous data is still available.") from None
         if response.status_code in {301, 302, 303, 307, 308}:
             target = urljoin(url, response.headers.get("Location", ""))
-            # Class navigation legitimately redirects to the desktop detail endpoint.
-            if method == "POST" and target.split("?")[0] == ORIGIN + "/aspen/portalClassDetail.do":
+            # Class and schedule navigation legitimately redirect to these desktop pages.
+            if target.split("?")[0] != url.split("?")[0] and (method, target.split("?")[0]) in {
+                    ("POST", ORIGIN + "/aspen/portalClassDetail.do"), ("GET", ORIGIN + "/aspen/studentScheduleMatrix.do")}:
                 return self.request("GET", target)
             raise AuthenticationRequired("Aspen redirected to login. Reconnect your session.")
         if response.status_code in {401, 403}:
@@ -518,7 +520,7 @@ class AspenClient:
             for name, path, parser in [
                 ("Attendance", "/aspen/studentAttendanceList.do?navkey=myInfo.att.list", read_attendance),
                 ("Recent activity", "/aspen/studentRecentActivityWidget.do", lambda body: read_activity(body, student_oid)),
-                ("Schedule", SCHEDULE_MATRIX_PATH, read_schedule_matrix),
+                ("Schedule", SCHEDULE_PATH, read_schedule_matrix),
             ]:
                 try:
                     params = {"preferences": ACTIVITY_PREFERENCES} if name == "Recent activity" else None

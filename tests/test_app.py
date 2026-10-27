@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import Store
 from helpers import create_test_app as create_app
@@ -139,7 +141,23 @@ class ScraperTests(unittest.TestCase):
         self.assertEqual(data["schedule"]["days"]["A"][0]["courseName"], "400 AP Microeconomics")
         self.assertEqual(request.call_args_list[0].args[1], "/aspen/portalClassList.do?navkey=academics.classes.list")
         self.assertEqual(request.call_args_list[2].kwargs["params"]["preferences"].count('id="dateRange"'), 1)
-        self.assertEqual(request.call_args_list[-1].args[1], "/aspen/studentScheduleMatrix.do?navkey=myInfo.sch.matrix")
+        self.assertEqual(request.call_args_list[-1].args[1], "/aspen/studentScheduleContextList.do?navkey=myInfo.sch.list")
+
+    def test_schedule_navigation_follows_only_its_matrix_redirect(self):
+        from types import SimpleNamespace
+        client = AspenClient(requests.cookies.RequestsCookieJar())
+        def redirect(location):
+            return SimpleNamespace(status_code=302, headers={"Location": location})
+        matrix = "/aspen/studentScheduleMatrix.do?navkey=myInfo.sch.matrix&viewDate=10/27/2026&userEvent=0"
+        page = SimpleNamespace(status_code=200, ok=True, headers={}, text="matrix")
+        with patch.object(client.session, "request", side_effect=[redirect(matrix), page]) as request:
+            self.assertEqual(client.request("GET", "/aspen/studentScheduleContextList.do?navkey=myInfo.sch.list").text, "matrix")
+        self.assertEqual(request.call_args_list[1].args, ("GET", "https://aspen.darienps.org" + matrix))
+        for location in ("/aspen/logon.do", matrix):
+            with self.subTest(location=location), \
+                 patch.object(client.session, "request", return_value=redirect(location)), \
+                 self.assertRaises(AuthenticationRequired):
+                client.request("GET", "/aspen/studentScheduleMatrix.do" if location == matrix else "/aspen/studentScheduleContextList.do")
 
     @staticmethod
     def schedule_matrix_html():
