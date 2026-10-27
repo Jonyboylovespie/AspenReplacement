@@ -4,6 +4,7 @@ import atexit
 from datetime import timedelta
 from functools import cache
 import hashlib
+import logging
 import os
 from pathlib import Path
 import re
@@ -28,8 +29,10 @@ from runtime import RefreshRuntime
 from push_notifications import PushNotifications
 from aspen import AspenError, CookieImportError, demo_snapshot, cookies_from_values
 from store import REFRESH_SECONDS, Store
+from scripts.generate_schedule_data import main as generate_schedule_data
 
 ROOT = Path(__file__).resolve().parent
+logger = logging.getLogger(__name__)
 
 def create_app(directory=None, config=None):
     if not (config and config.get("TESTING")):
@@ -53,6 +56,13 @@ def create_app(directory=None, config=None):
     )
     if config:
         app.config.update(config)
+    if not app.config.get("TESTING") and app.config.get("SCHEDULE_REFRESH", True):
+        try:
+            generate_schedule_data()
+        except Exception:
+            # Keep the last generated asset when DHS or Adobe is temporarily
+            # unavailable; the dashboard can still use its cached rotation.
+            logger.warning("Unable to refresh DHS schedule data at startup", exc_info=True)
     ai_endpoint = urlsplit(app.config["AI_API_ENDPOINT"])
     if (ai_endpoint.scheme not in {"https", "http"} or not ai_endpoint.netloc
             or ai_endpoint.username or ai_endpoint.password or ai_endpoint.fragment

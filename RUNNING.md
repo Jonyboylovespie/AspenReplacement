@@ -5,6 +5,10 @@ Run the server with:
 .venv/bin/gunicorn -c gunicorn.conf.py 'app:create_app()'
 ```
 
+On startup, BetterAspen refreshes the DHS rotation asset from the official
+calendar and bell-schedule links. If DHS is unavailable, the last generated
+asset remains in place.
+
 Gunicorn binds to `0.0.0.0:5173` and runs one process with eight threads. Keep
 one worker: account stores and background refresh live in that process. Refresh
 starts automatically, including after a worker restart. No systemd service is
@@ -123,7 +127,7 @@ BETTERASPEN_AI_WHITELIST=alice@school.example,bob@school.example
 ```
 
 The endpoint is the full URL of an OpenAI Responses API compatible service;
-HTTPS is required except for localhost development. Requests use `gpt-6.1-sol`
+HTTPS is required except for localhost development. Requests use `gpt-6.1-terra`
 with Fast mode (`service_tier=fast`) and low reasoning effort. The configured
 provider must support Fast mode; OpenAI bills it at a premium over Standard processing.
 The key, endpoint, and whitelist stay on the server.

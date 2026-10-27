@@ -133,8 +133,39 @@ function scheduleFallback(snapshot) {
           letterDays: []};
 }
 
+function dhsSchedule(snapshot) {
+  const source = globalThis.betterAspenSchedule;
+  if (!source?.calendar || !source?.bell || !source?.order) return null;
+  const classes = snapshot?.classes || [];
+  const days = Object.entries(source.calendar).map(([date, label]) => {
+    const letter = String(label).match(/[A-H](?= Day)/)?.[0] || "";
+    const definition = label.includes("Early Dismissal") ? source.bell.earlyDismissal :
+      label.includes("PLC") ? source.bell.plc : label.includes("Advisory") ? source.bell.advisory : source.bell.regular;
+    const slots = source.order[letter] || [];
+    let academic = 0;
+    const periods = [];
+    for (const block of definition.blocks || []) {
+      if (block.name.includes("Advisory")) {
+        periods.push({period: "Advisory", courseName: "Advisory", startTime: block.start, endTime: block.end, meetingTime: `${block.start}-${block.end}`});
+        continue;
+      }
+      const minis = block.minis?.length ? block.minis : [{name: block.name, start: block.start, end: block.end}];
+      for (const mini of minis) {
+        const slot = slots[academic++] || 0;
+        const course = classes.find(item => Number(item.period || item.periodNumber) === slot) || classes[slot - 1] || {};
+        periods.push({period: `${block.name} ${mini.name}`, courseName: course.courseName || "Open period",
+          teacherName: course.teacherName || "", startTime: mini.start, endTime: mini.end,
+          meetingTime: `${mini.start}-${mini.end}`, studentScheduleOid: course.studentScheduleOid});
+      }
+    }
+    return {date, label, letterDay: letter, unique: !/^[A-H] Day$/.test(label), periods};
+  });
+  return {available: days.length > 0, days, letterDays: [...new Set(days.map(day => day.letterDay).filter(Boolean))],
+    source: source.source, fetchedAt: new Date().toISOString()};
+}
+
 function renderSchedule() {
-  const schedule = currentState?.snapshot?.schedule || scheduleFallback(currentState?.snapshot);
+  const schedule = dhsSchedule(currentState?.snapshot) || currentState?.snapshot?.schedule || scheduleFallback(currentState?.snapshot);
   const days = schedule?.days || [];
   const periods = $("schedule-periods");
   const gridHead = $("schedule-grid-head");
@@ -152,7 +183,7 @@ function renderSchedule() {
   const today = new Date().toISOString().slice(0, 10);
   const active = days.find(day => day.date === today) || days.find(day => day.date === selectedScheduleDate) || days[0];
   selectedScheduleDate = active.date;
-  $("schedule-status").textContent = schedule.fallback ? schedule.note : `${days.length} school day${days.length === 1 ? "" : "s"} from Aspen${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
+  $("schedule-status").textContent = schedule.fallback ? schedule.note : `${days.length} DHS school day${days.length === 1 ? "" : "s"}${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
   $("schedule-day-heading").textContent = active.label || formatDate(active.date);
   $("schedule-day-description").textContent = active.unique ? "A unique schedule today" : "Your classes in period order";
   for (const [index, period] of active.periods.entries()) {
@@ -169,15 +200,10 @@ function renderSchedule() {
 }
 
 function renderScheduleGrid(days, active) {
-  const columns = [];
-  const seen = new Set();
-  for (const day of [active, ...days]) {
-    const key = day.label || day.date;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    columns.push(day);
-    if (columns.length === 8) break;
-  }
+  const columns = ["A", "B", "C", "D", "E", "F", "G", "H"].map(letter =>
+    days.find(day => day.date === active.date && day.letterDay === letter) ||
+    days.find(day => day.label === `${letter} Day`) || days.find(day => day.letterDay === letter) ||
+    {date: `letter-${letter}`, label: `${letter} Day`, letterDay: letter, periods: []});
   const headRow = element("tr");
   headRow.append(element("th", "Period"));
   for (const day of columns) {
@@ -202,7 +228,10 @@ function renderScheduleGrid(days, active) {
 
 function clockMinutes(value) {
   const match = String(value || "").match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-  if (!match) return null;
+  if (!match) {
+    const military = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+    return military ? Number(military[1]) * 60 + Number(military[2]) : null;
+  }
   let hour = Number(match[1]) % 12;
   if (match[3].toUpperCase() === "PM") hour += 12;
   return hour * 60 + Number(match[2] || 0);
@@ -211,7 +240,7 @@ function clockMinutes(value) {
 function updateScheduleCountdown(day) {
   const countdown = $("schedule-countdown");
   const times = day.periods.map((item, index) => {
-    const match = String(item.meetingTime || `${item.startTime || ""} ${item.endTime || ""}`).match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM))/ig);
+    const match = String(item.meetingTime || `${item.startTime || ""} ${item.endTime || ""}`).match(/(\d{1,2}:\d{2}|\d{1,2}(?::\d{2})?\s*(?:AM|PM))/ig);
     return {period: item.period || String(index + 1), name: item.courseName, start: clockMinutes(match?.[0]), end: clockMinutes(match?.[1])};
   }).filter(item => item.start !== null);
   if (!times.length) {

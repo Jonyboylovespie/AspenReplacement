@@ -81,7 +81,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer private-test-key")
         self.assertFalse(kwargs["allow_redirects"])
         payload = kwargs["json"]
-        self.assertEqual(payload["model"], "gpt-6.1-sol")
+        self.assertEqual(payload["model"], "gpt-6.1-terra")
         self.assertEqual(payload["service_tier"], "fast")
         self.assertEqual(payload["reasoning"], {"effort": "low"})
         self.assertFalse(payload["store"])
