@@ -37,32 +37,108 @@ function sameCourse(first, second) {
     (first?.teacherName ?? null) === (second?.teacherName ?? null);
 }
 
+// DHS lunch waves follow the department of the class in the lunch block:
+// 1 English, Art, Music · 2 World Language, Math · 3 Social Studies, Tech Ed ·
+// 4 Science, Special Ed, PE/Health. Aspen section prefixes seen on DHS schedules
+// decide first; otherwise the course title does. The title rules are checked
+// against every course in the 2026–27 catalog (tests/lunch_wave_catalog.json),
+// so their order matters: cross-listed and look-alike titles come first.
+// Media and Theater follow English and the Arts; Business and Computer Science
+// share Career Technical Education with Tech Ed; Reading & Study Skills is
+// Special Ed.
+const LUNCH_DEPARTMENTS = {ENG: 1, MUS: 1, MAT: 2, HST: 3, SCI: 4, PE: 4};
+const LUNCH_TITLES = [
+  [1, /Media Studies|Video Broadcasting|Approaches to Film|Music Technology|Theatrical|Art and Design|Historical Art|Literature|Fiction|Writing|Composition|Capstone|\bEnglish\b/i],
+  [2, /Sign Language|French|\bLatin\b|Mandarin|Chinese|Spanish/i],
+  [4, /Neuroscience|Applications of Physics and Chemistry/i],
+  [3, /Computer|Cybersecurity|Programming|Web Design|Business|Entrepreneurship|Marketing|Investing|Finance|Accounting|Pre-Law|Architecture|\bCADD\b|Drafting|\bDIY\b|Woodworking|Engineering|Electronics/i],
+  [3, /History|Civilization|World Studies|Government|Politics|\bLaw\b|Studies|America Since|Geography|economics|Psycholog|Philosophy|Contemporary Issues/i],
+  [2, /Math|Algebra|Geometry|Calculus|Statistics|Probability/i],
+  [4, /Science|Biology|Chemistry|Physics|Astronomy|Botany|Anatomy|Physiology|Health|Physical Education|Study Skills|Special Education/i],
+  [1, /\bArts?\b|Drawing|Painting|Graphic Design|Photography|Ceramics|Sculpture|Mural|Print ?Making|Clay|Band|Ensemble|Orchestra|Choir|Chorus|Lessons|Music|Jazz|Drama|Theat/i],
+];
+
+function lunchWave(course) {
+  return LUNCH_DEPARTMENTS[course.department] ||
+    LUNCH_TITLES.find(([, title]) => title.test(course.courseName || ""))?.[0] || null;
+}
+
+// The lunch for one lunch-block class pair: a free block has none, and split
+// minis eat in wave 4 ("PE/H minis"). From Jupitr: with Wind Ensemble in M1,
+// M1 is lunch and Wind meets during wave 4.
+function scheduleLunch(first, second) {
+  if (!sameCourse(first, second)) return {wave: 4, mini: true, inM1: /Wind Ensemble/i.test(first?.courseName || "")};
+  if (!first) return null;
+  return {wave: lunchWave(first)};
+}
+
 // Without Aspen's matrix (days is null), courses are undefined rather than free.
 function scheduleItems(dayType, bell, days) {
   const letter = scheduleLetter(dayType);
   if (!letter || !bell) return [];
   const allPeriods = ALL_PERIODS.test(dayType);
+  const definition = bellDefinition(bell, dayType);
+  const waves = definition.lunchWaves || {};
+  const lunchStart = waves[1] ? scheduleMinutes(waves[1].start) : null;
   const items = [];
   let academic = 0;
-  for (const [index, block] of bellDefinition(bell, dayType).blocks.entries()) {
+  let lunch = null;
+  for (const [index, block] of definition.blocks.entries()) {
+    const start = scheduleMinutes(block.start);
+    const end = scheduleMinutes(block.end);
     if (/Advisory/i.test(block.name)) {
-      items.push({name: block.name, start: scheduleMinutes(block.start), end: scheduleMinutes(block.end), advisory: true});
+      items.push({name: block.name, start, end, advisory: true});
       continue;
     }
     // When all periods meet, the A-day blocks run first and the B-day blocks follow.
     const source = allPeriods ? (index < 4 ? "A" : "B") : letter;
     const position = allPeriods ? index % 4 : academic++;
     const slots = days ? (days[source] || []).slice(position * 2, position * 2 + 2).map(course => course || null) : [];
+    const lunchBlock = days && lunchStart !== null && start <= lunchStart && lunchStart < end;
+    if (lunchBlock) lunch = {block, slots, ...scheduleLunch(slots[0], slots[1])};
     if (sameCourse(slots[0], slots[1]) || block.minis.length < 2) {
-      items.push({name: block.name, start: scheduleMinutes(block.start), end: scheduleMinutes(block.end),
-                  course: days ? slots[0] || slots[1] || null : undefined});
+      items.push({name: block.name, start, end, lunchBlock, course: days ? slots[0] || slots[1] || null : undefined});
       continue;
     }
     for (const [mini, course] of block.minis.slice(0, 2).map((mini, slot) => [mini, slots[slot]])) {
-      items.push({name: `${block.name} · ${mini.name}`, start: scheduleMinutes(mini.start), end: scheduleMinutes(mini.end), course});
+      items.push({name: `${block.name} · ${mini.name}`, start: scheduleMinutes(mini.start), end: scheduleMinutes(mini.end),
+                  course, mini: true, lunchBlock});
     }
   }
-  return items;
+  if (!lunch?.wave) {
+    if (lunch) for (const item of items) if (item.lunchBlock) item.note = "Lunch wave unknown for this class";
+    return items;
+  }
+  const window = wave => ({start: scheduleMinutes(waves[wave].start), end: scheduleMinutes(waves[wave].end),
+    segments: (waves[wave].classSegments || []).map(part => ({start: scheduleMinutes(part.start), end: scheduleMinutes(part.end)}))});
+  if (lunch.inM1 && !allPeriods) {
+    const wind = items.find(item => item.lunchBlock && item.course === lunch.slots[0]);
+    const four = window(4);
+    return [...items.filter(item => item !== wind),
+      {name: wind.name, start: wind.start, end: wind.end, lunch: true},
+      {...wind, name: `${lunch.block.name} · Wave 4`, start: four.start, end: four.end}].sort((a, b) => a.start - b.start);
+  }
+  return splitAroundLunch(items, window(lunch.wave), `Wave ${lunch.wave}`);
+}
+
+// Full blocks keep the published class segments around their wave; minis are cut.
+function splitAroundLunch(items, lunch, name) {
+  const result = [];
+  for (const item of items) {
+    if (item.end <= lunch.start || item.start >= lunch.end) {
+      result.push(item);
+      continue;
+    }
+    const parts = !item.mini && lunch.segments.length ? lunch.segments :
+      [{start: item.start, end: lunch.start}, {start: lunch.end, end: item.end}];
+    for (const part of parts) {
+      const start = Math.max(item.start, part.start);
+      const end = Math.min(item.end, part.end);
+      if (start < end) result.push({...item, start, end, continued: item.start < lunch.start && start >= lunch.end});
+    }
+  }
+  result.push({name, start: lunch.start, end: lunch.end, lunch: true});
+  return result.sort((a, b) => a.start - b.start || (b.lunch ? 1 : 0) - (a.lunch ? 1 : 0));
 }
 
 function formatRemaining(seconds) {
@@ -76,7 +152,13 @@ function formatClock(minutes) {
   return `${hour % 12 || 12}:${String(minutes % 60).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
 }
 
+function scheduleLunchLabel(slots) {
+  const lunch = scheduleLunch(slots[4] || null, slots[5] || null);
+  return !lunch ? "No lunch" : lunch.inM1 ? "Lunch in M1" : lunch.wave ? `Lunch wave ${lunch.wave}` : "Lunch wave unknown";
+}
+
 function scheduleItemName(item) {
+  if (item.lunch) return `Lunch · ${item.name}`;
   return item.course?.courseName || (item.course === null ? `Free · ${item.name}` : item.name);
 }
 
@@ -184,20 +266,22 @@ function tickSchedule(now = new Date()) {
     const row = element("li");
     row.className = "schedule-item";
     if (item.advisory) row.classList.add("schedule-advisory");
+    if (item.lunch) row.classList.add("schedule-lunch");
     if (index === status.current) {
       row.classList.add("schedule-current");
       row.setAttribute("aria-current", "time");
     }
     if (colors.has(item.course?.courseName)) row.classList.add(`schedule-color-${colors.get(item.course.courseName)}`);
     const details = element("div");
-    details.append(element("span", item.name));
+    details.append(element("span", item.continued ? `${item.name} (cont.)` : item.name));
     if (item.course) {
       details.append(scheduleCourseNode(item.course, "strong"));
       const where = [item.course.teacherName, item.course.room].filter(Boolean).join(" · ");
       if (where) details.append(element("small", where));
     } else {
-      details.append(element("strong", item.course === null ? "Free" : item.advisory ? "Advisory" : "—"));
+      details.append(element("strong", item.lunch ? "Lunch" : item.course === null ? "Free" : item.advisory ? "Advisory" : "—"));
     }
+    if (item.note) details.append(element("small", item.note));
     row.append(element("time", `${formatClock(item.start)} – ${formatClock(item.end)}`), details);
     list.append(row);
   }
@@ -225,6 +309,7 @@ function renderScheduleRotation() {
   headRow.append(Object.assign(element("th", "Period"), {scope: "col"}));
   for (const letter of letters) {
     const cell = Object.assign(element("th", `${letter} Day`), {scope: "col"});
+    cell.append(element("small", scheduleLunchLabel(days[letter])));
     if (letter === today) cell.className = "schedule-rotation-today";
     headRow.append(cell);
   }
@@ -255,5 +340,5 @@ function renderScheduleRotation() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = {scheduleItems, scheduleStatus, scheduleDay, formatRemaining, formatClock, bellDefinition};
+  module.exports = {scheduleItems, scheduleStatus, scheduleDay, scheduleLunchLabel, lunchWave, formatRemaining, formatClock, bellDefinition};
 }

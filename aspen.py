@@ -316,7 +316,11 @@ def read_schedule_matrix(html):
 
 
 def schedule_course(cell):
-    """Read one matrix cell: section, course, teacher and room are separated by <br>."""
+    """Read one matrix cell: section, course, teacher and room are separated by <br>.
+
+    Only the section's department prefix (HST502-520A-002 → HST) is kept; DHS
+    lunch waves depend on it.
+    """
     content = cell.find("td") if cell else None
     if not content:
         return None
@@ -325,7 +329,9 @@ def schedule_course(cell):
     lines += [""] * (4 - len(lines))
     if not lines[1]:
         return None
-    return {"courseName": lines[1], "teacherName": lines[2], "room": lines[3]}
+    department = re.match(r"[A-Z]+", lines[0])
+    return {"courseName": lines[1], "teacherName": lines[2], "room": lines[3],
+            "department": department[0] if department else ""}
 
 
 def read_activity(xml, student_oid):
@@ -594,6 +600,7 @@ class AspenClient:
 
 DEMO_ROTATION = {"A": (2, 4, 6, 8), "B": (1, 3, 5, 7), "C": (4, 2, 8, 6), "D": (3, 1, 7, 5),
                  "E": (2, 8, 4, 6), "F": (1, 7, 3, 5), "G": (4, 6, 2, 8), "H": (3, 5, 1, 7)}
+DEMO_DEPARTMENTS = ("MAT", "ENG", "SCI", "HST", "WL", "ART")
 
 
 def demo_snapshot(year="current", quarter="current"):
@@ -670,7 +677,7 @@ def demo_period(year="current", quarter="current"):
         for block, period in enumerate(periods):
             if period <= len(subjects):
                 course = {"courseName": subjects[period - 1][0], "teacherName": subjects[period - 1][1],
-                          "room": f"Room {100 + period}"}
+                          "room": f"Room {100 + period}", "department": DEMO_DEPARTMENTS[period - 1]}
                 demo_schedule[letter][block * 2:block * 2 + 2] = [course, course]
     return {"mode": "demo", "student": {"name": "Alex Morgan", "studentOid": "demo"},
             "gradeFilters": {"year": year, "quarter": quarter, "years": years, "quarters": quarters},

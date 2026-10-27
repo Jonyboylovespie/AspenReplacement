@@ -185,13 +185,13 @@ class ScraperTests(unittest.TestCase):
     def test_schedule_matrix_spans_splits_and_ignored_periods(self):
         days = read_schedule_matrix(self.schedule_matrix_html())["days"]
         self.assertEqual(set(days), {"A", "B"})
-        micro = {"courseName": "400 AP Microeconomics", "teacherName": "Balazs, Stephen", "room": "G209"}
-        wind = {"courseName": "400 Wind Ensemble Honors PT", "teacherName": "Grauer, Jonathan", "room": "F013"}
+        micro = {"courseName": "400 AP Microeconomics", "teacherName": "Balazs, Stephen", "room": "G209", "department": "HST"}
+        wind = {"courseName": "400 Wind Ensemble Honors PT", "teacherName": "Grauer, Jonathan", "room": "F013", "department": "MUS"}
         self.assertEqual(days["A"][:4], [micro, micro, wind,
                                          {"courseName": "400 AP Physics C: Electricity and Magnetism",
-                                          "teacherName": "Nesteruk, Kurt", "room": "C107"}])
+                                          "teacherName": "Nesteruk, Kurt", "room": "C107", "department": "SCI"}])
         self.assertEqual(days["B"][:4], [wind, wind, None,
-                                         {"courseName": "12th Grade Health", "teacherName": "Chase, Timothy", "room": ""}])
+                                         {"courseName": "12th Grade Health", "teacherName": "Chase, Timothy", "room": "", "department": "PE"}])
         # Periods 5–8 are absent from this fixture; period 9 and advisory are never read.
         self.assertEqual(days["A"][4:], [None] * 4)
         self.assertNotIn("Advisory 12", json.dumps(days))

@@ -414,6 +414,10 @@ body[data-mode='dark'] .schedule-timer[data-tone='soon'] { color: #ffc266; }
 .schedule-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 0.7rem; }
 .schedule-item a, .schedule-rotation a { color: inherit; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
 .schedule-advisory strong { color: var(--muted); font-weight: 400; }
+.schedule-lunch { border-left: 4px dashed #d69e2e; }
+.schedule-lunch strong { color: #b7791f; }
+body[data-mode='dark'] .schedule-lunch strong { color: #f6c453; }
+.schedule-rotation thead small { display: block; margin-top: 3px; color: var(--muted); font-size: 0.62rem; font-weight: 400; }
 
 .schedule-current {
   background: color-mix(in srgb, var(--course-hue, var(--accent)) 16%, var(--surface));
