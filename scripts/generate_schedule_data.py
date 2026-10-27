@@ -56,6 +56,7 @@ def main():
     source={"page":DHS_PAGE,"calendar":calendar_url,"bell":bell_url,"generatedAt":date.today().isoformat()}
     payload={"calendar":days,"bell":BELL,"source":source,"order":ORDER}
     out=Path(__file__).resolve().parents[1]/"static"/"schedule-data.js"
+    (out.parent / "schedule-data.json").write_text(json.dumps(payload, separators=(",", ":")))
     out.write_text('"use strict";\nglobalThis.betterAspenSchedule = '+json.dumps(payload,separators=(",",":"))+';\n')
     print(f"generated {out} ({len(days)} DHS days)")
 

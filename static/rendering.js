@@ -137,6 +137,8 @@ function dhsSchedule(snapshot) {
   const source = globalThis.betterAspenSchedule;
   if (!source?.calendar || !source?.bell || !source?.order) return null;
   const classes = snapshot?.classes || [];
+  const imported = Object.fromEntries((snapshot?.schedule?.days || []).map(day =>
+    [day.letterDay || String(day.label || "").match(/[A-H](?= Day)/)?.[0], day.periods]));
   const days = Object.entries(source.calendar).map(([date, label]) => {
     const letter = String(label).match(/[A-H](?= Day)/)?.[0] || "";
     const definition = label.includes("Early Dismissal") ? source.bell.earlyDismissal :
@@ -158,7 +160,7 @@ function dhsSchedule(snapshot) {
           meetingTime: `${mini.start}-${mini.end}`, studentScheduleOid: course.studentScheduleOid});
       }
     }
-    return {date, label, letterDay: letter, unique: !/^[A-H] Day$/.test(label), periods};
+    return {date, label, letterDay: letter, unique: !/^[A-H] Day$/.test(label), periods: imported[letter]?.length ? imported[letter] : periods};
   });
   return {available: days.length > 0, days, letterDays: [...new Set(days.map(day => day.letterDay).filter(Boolean))],
     source: source.source, fetchedAt: new Date().toISOString()};

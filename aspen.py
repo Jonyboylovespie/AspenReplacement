@@ -5,7 +5,9 @@ import json
 import re
 import time
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from urllib.parse import quote, unquote, urljoin
+import json
 
 from bs4 import BeautifulSoup
 import requests
@@ -133,6 +135,20 @@ def normalize_schedule(raw, classes=None):
 
 def empty_schedule(error):
     return {"available": False, "days": [], "letterDays": [], "error": error}
+
+
+def dhs_rotation_dates():
+    """Return one representative DHS date for each letter day."""
+    try:
+        payload = json.loads((Path(__file__).resolve().parent / "static" / "schedule-data.json").read_text())
+        result = {}
+        for value, label in payload.get("calendar", {}).items():
+            letter = re.match(r"([A-H]) Day", label or "")
+            if letter and letter[1] not in result:
+                result[letter[1]] = (value, label)
+        return result
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
 
 
 def merge_schedule_days(target, source):
@@ -592,6 +608,36 @@ class AspenClient:
         # Rotation dates and bell times come from the generated DHS asset in
         # static/schedule-data.js; Aspen is used only for the student roster.
         schedule = empty_schedule("DHS rotation data is loaded in the browser.")
+        if year == "current":
+            rotation = dhs_rotation_dates()
+            days = []
+            for letter, (date_value, label) in rotation.items():
+                try:
+                    detail = read("/studentSchedule", {"studentOid": student_oid,
+                                                        "schoolOid": student["schoolOid"], "date": date_value})
+                except (AspenError, AssertionError, StopIteration):
+                    detail = None
+                if not detail:
+                    try:
+                        detail = read("/studentSchedule", {"studentOid": student_oid,
+                                                            "schoolOid": student["schoolOid"],
+                                                            "date": datetime.strptime(date_value, "%Y-%m-%d").strftime("%m/%d/%Y")})
+                    except (AspenError, AssertionError, StopIteration):
+                        detail = None
+                if isinstance(detail, dict):
+                    detail = [detail]
+                sections = []
+                for item in detail or []:
+                    if not isinstance(item, dict):
+                        continue
+                    sections.extend(item.get("todayModels") or item.get("sections") or item.get("models") or [])
+                if sections:
+                    normalized = normalize_schedule([{"date": date_value, "label": label, "sections": sections}], classes)
+                    days.extend(normalized["days"])
+            if days:
+                schedule = {"available": True, "days": days,
+                            "letterDays": list(rotation),
+                            "source": "DHS rotation + Aspen student schedule"}
         canonical = {}
         use_desktop = self.desktop_available and year == "current"
         if use_desktop and quarter == "current":
