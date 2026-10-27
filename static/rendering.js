@@ -183,7 +183,7 @@ function renderSchedule() {
   const today = new Date().toISOString().slice(0, 10);
   const active = days.find(day => day.date === today) || days.find(day => day.date === selectedScheduleDate) || days[0];
   selectedScheduleDate = active.date;
-  $("schedule-status").textContent = schedule.fallback ? schedule.note : `${days.length} DHS school day${days.length === 1 ? "" : "s"}${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
+  $("schedule-status").textContent = schedule.fallback ? schedule.note : "";
   $("schedule-day-heading").textContent = active.label || formatDate(active.date);
   $("schedule-day-description").textContent = active.unique ? "A unique schedule today" : "Your classes in period order";
   for (const [index, period] of active.periods.entries()) {
