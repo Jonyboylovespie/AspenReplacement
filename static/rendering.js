@@ -117,8 +117,20 @@ function renderAttendance() {
 
 let selectedScheduleDate = "";
 
+function scheduleFallback(snapshot) {
+  const classes = snapshot?.classes || [];
+  if (!classes.length) return {available: false, days: [], letterDays: [], error: "Aspen did not return a student schedule."};
+  return {available: true, fallback: true,
+          note: "Aspen did not expose letter-day dates; showing the current class order.",
+          days: [{date: new Date().toISOString().slice(0, 10), label: "Current order", unique: true,
+                  periods: classes.map((course, index) => ({period: String(course.period || course.periodNumber || index + 1),
+                    courseName: course.courseName || "Open period", teacherName: course.teacherName || "",
+                    meetingTime: course.meetingTime || "", studentScheduleOid: course.studentScheduleOid}))}],
+          letterDays: []};
+}
+
 function renderSchedule() {
-  const schedule = currentState?.snapshot?.schedule;
+  const schedule = currentState?.snapshot?.schedule || scheduleFallback(currentState?.snapshot);
   const days = schedule?.days || [];
   const select = $("schedule-day-select");
   const periods = $("schedule-periods");
@@ -143,7 +155,7 @@ function renderSchedule() {
     return option;
   }));
   select.value = active.date;
-  $("schedule-status").textContent = `${days.length} school day${days.length === 1 ? "" : "s"} from Aspen${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
+  $("schedule-status").textContent = schedule.fallback ? schedule.note : `${days.length} school day${days.length === 1 ? "" : "s"} from Aspen${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
   $("schedule-day-heading").textContent = active.label || formatDate(active.date);
   $("schedule-day-description").textContent = active.unique ? "A unique schedule day" : "Your classes in period order";
   for (const [index, period] of active.periods.entries()) {

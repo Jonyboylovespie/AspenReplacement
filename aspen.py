@@ -133,6 +133,35 @@ def empty_schedule(error):
     return {"available": False, "days": [], "letterDays": [], "error": error}
 
 
+def merge_schedule_days(target, source):
+    """Merge normalized schedule days while preserving each day only once."""
+    by_date = {item["date"]: item for item in target}
+    for item in source:
+        current = by_date.setdefault(item["date"], {**item, "periods": []})
+        if item.get("label") and not current.get("label"):
+            current["label"] = item["label"]
+        if item.get("periods"):
+            current["periods"] = item["periods"]
+        current["unique"] = bool(current.get("label") and not re.fullmatch(r"[A-Za-z]", current["label"].strip()))
+    return sorted(by_date.values(), key=lambda item: item["date"])
+
+
+def schedule_from_classes(classes):
+    """Provide a useful current order when a district hides schedule APIs."""
+    periods = []
+    for index, course in enumerate(classes or []):
+        periods.append({"period": str(course.get("period") or course.get("periodNumber") or index + 1),
+                        "courseName": course.get("courseName", ""),
+                        "teacherName": course.get("teacherName", ""),
+                        "meetingTime": course.get("meetingTime", ""),
+                        "studentScheduleOid": course.get("studentScheduleOid")})
+    today = date.today().isoformat()
+    return {"available": bool(periods), "days": [{"date": today, "label": "Current order", "unique": True,
+                                                    "periods": periods}] if periods else [],
+            "letterDays": [], "fallback": True,
+            "note": "Aspen did not expose letter-day dates; showing the current class order."}
+
+
 class AspenError(Exception):
     pass
 
@@ -570,52 +599,109 @@ class AspenClient:
                     window_start = date(start_year, 7, 1)
                     window_end = date(start_year + 1, 6, 30)
                     # Aspen installations commonly cap calendar queries at one
-                    # month even though the OpenAPI document does not mention it.
-                    while window_start <= window_end:
-                        chunk_end = min(window_start + timedelta(days=30), window_end)
-                        chunk = read("/calendar/schedule", {"from": window_start.isoformat(),
-                                                              "to": chunk_end.isoformat(),
-                                                              "studentOid": student_oid, "schoolOid": student["schoolOid"]})
-                        if not chunk:
-                            # Older Aspen builds use the desktop portal's
-                            # month/day/year query format despite the REST docs.
-                            chunk = read("/calendar/schedule", {"from": window_start.strftime("%m/%d/%Y"),
-                                                                  "to": chunk_end.strftime("%m/%d/%Y"),
-                                                                  "studentOid": student_oid, "schoolOid": student["schoolOid"]})
-                        if isinstance(chunk, list):
-                            raw_schedule.extend(chunk)
-                        window_start = chunk_end + timedelta(days=1)
-                    schedule = normalize_schedule(raw_schedule, classes)
-                    if schedule["days"] and not any(day["periods"] for day in schedule["days"]):
-                        # Some Aspen deployments return only date/rotation strings
-                        # from calendar/schedule. Hydrate those dates through the
-                        # studentSchedule endpoint, which includes period order.
-                        representatives, seen_labels = [], set()
-                        for day in schedule["days"]:
-                            key = day["label"] or day["date"]
-                            if key in seen_labels:
-                                continue
-                            seen_labels.add(key)
-                            representatives.append(day)
-                            if len(representatives) >= 20:
+                    # month. A denied calendar feed should not block fallback.
+                    try:
+                        while window_start <= window_end:
+                            chunk_end = min(window_start + timedelta(days=30), window_end)
+                            try:
+                                chunk = read("/calendar/schedule", {"from": window_start.isoformat(),
+                                                                      "to": chunk_end.isoformat(),
+                                                                      "studentOid": student_oid, "schoolOid": student["schoolOid"]})
+                            except AspenError:
+                                chunk = None
+                            if not chunk:
+                                try:
+                                    chunk = read("/calendar/schedule", {"from": window_start.strftime("%m/%d/%Y"),
+                                                                          "to": chunk_end.strftime("%m/%d/%Y"),
+                                                                          "studentOid": student_oid, "schoolOid": student["schoolOid"]})
+                                except AspenError:
+                                    chunk = None
+                            if chunk is None:
                                 break
-                        for day in representatives:
-                            detail = read("/studentSchedule", {"studentOid": student_oid,
-                                                                "schoolOid": student["schoolOid"], "date": day["date"]})
-                            if isinstance(detail, list):
-                                hydrated = normalize_schedule([{**item, "date": day["date"]}
-                                                               for item in detail if isinstance(item, dict)], classes)
-                                if hydrated["days"]:
-                                    day["periods"] = hydrated["days"][0]["periods"]
-                        period_by_label = {day["label"]: day["periods"] for day in representatives
-                                           if day["label"] and day["periods"]}
-                        for day in schedule["days"]:
-                            if not day["periods"] and day["label"] in period_by_label:
-                                day["periods"] = period_by_label[day["label"]]
+                            if isinstance(chunk, list):
+                                raw_schedule.extend(chunk)
+                            window_start = chunk_end + timedelta(days=1)
+                    except (KeyError, TypeError, ValueError):
+                        pass
+                    if not raw_schedule:
+                        # Some districts publish rotation days as calendar
+                        # events rather than the calendar/schedule resource.
+                        try:
+                            window_start = date(start_year, 7, 1)
+                            while window_start <= window_end:
+                                chunk_end = min(window_start + timedelta(days=30), window_end)
+                                events = read("/calendar/events", {"from": window_start.isoformat(),
+                                                                    "to": chunk_end.isoformat(),
+                                                                    "studentOid": student_oid,
+                                                                    "view": "STUDENT",
+                                                                    "schoolOids": student["schoolOid"]})
+                                if isinstance(events, list):
+                                    raw_schedule.extend(events)
+                                window_start = chunk_end + timedelta(days=1)
+                        except (AspenError, KeyError, TypeError, ValueError):
+                            pass
+                    schedule = normalize_schedule(raw_schedule, classes)
+                    # The calendar endpoint is optional in Aspen Go. Build a
+                    # rolling school-day range directly from studentSchedule so
+                    # accounts without calendar access still get class order.
+                    if not schedule["days"] or not any(day["periods"] for day in schedule["days"]):
+                        hydrated_days = []
+                        candidates = []
+                        seen_candidates = set()
+                        for item in schedule["days"]:
+                            key = item["label"] or item["date"]
+                            if key not in seen_candidates:
+                                seen_candidates.add(key)
+                                candidates.append(item["date"])
+                        cursor = max(date.today(), date(start_year, 7, 1))
+                        end = date(start_year + 1, 6, 30)
+                        while len(candidates) < 20 and cursor <= end:
+                            if cursor.weekday() < 5 and cursor.isoformat() not in candidates:
+                                candidates.append(cursor.isoformat())
+                            cursor += timedelta(days=1)
+                        for day_value in candidates[:20]:
+                            cursor = date.fromisoformat(day_value)
+                            if cursor.weekday() < 5:
+                                try:
+                                    detail = read("/studentSchedule", {"studentOid": student_oid,
+                                                                        "schoolOid": student["schoolOid"],
+                                                                        "date": cursor.isoformat()})
+                                except AspenError:
+                                    detail = None
+                                if not detail:
+                                    try:
+                                        detail = read("/studentSchedule", {"studentOid": student_oid,
+                                                                            "schoolOid": student["schoolOid"],
+                                                                            "date": cursor.strftime("%m/%d/%Y")})
+                                    except AspenError:
+                                        detail = None
+                                if detail is None:
+                                    break
+                                if isinstance(detail, dict):
+                                    detail = [detail]
+                                if isinstance(detail, list):
+                                    schedule_items = []
+                                    for item in detail:
+                                        if not isinstance(item, dict):
+                                            continue
+                                        if any(key in item for key in ("yesterdayModels", "todayModels", "tomorrowModels")):
+                                            for key, offset in (("yesterdayModels", -1), ("todayModels", 0), ("tomorrowModels", 1)):
+                                                schedule_items.append({"date": (cursor + timedelta(days=offset)).isoformat(),
+                                                                       "sections": item.get(key) or []})
+                                        else:
+                                            schedule_items.append({**item, "date": cursor.isoformat()})
+                                    hydrated = normalize_schedule(schedule_items, classes)
+                                    hydrated_days = merge_schedule_days(hydrated_days, hydrated["days"])
+                        if hydrated_days:
+                            schedule["days"] = merge_schedule_days(schedule["days"], hydrated_days)
+                            schedule["available"] = True
+                            schedule["letterDays"] = list(dict.fromkeys(day["label"] for day in schedule["days"] if day["label"]))
+                    if not schedule["days"] or not any(day["periods"] for day in schedule["days"]):
+                        schedule = schedule_from_classes(classes)
                 except (AspenError, AssertionError, KeyError, TypeError, ValueError, StopIteration):
                     # Schedules are an enhancement; grades remain usable when a
                     # district has disabled the calendar endpoint.
-                    schedule = empty_schedule("Aspen's schedule is unavailable for this account.")
+                    schedule = schedule_from_classes(classes)
                 if shared is not None:
                     shared["schedule"] = schedule
         canonical = {}
@@ -688,7 +774,7 @@ class AspenClient:
                     shared["summaries"][schedule_oid] = summary
             desktop = canonical.get(schedule_oid)
             percentage = numeric_grade(course.get("percentageValue"))
-            result.append({**academic_fields(course, "studentScheduleOid courseName teacherName teacherEmail meetingTime"),
+            result.append({**academic_fields(course, "studentScheduleOid courseName teacherName teacherEmail meetingTime period periodNumber"),
                            "displayGrade": desktop if desktop is not None else percentage or "",
                            "gradeSource": "Aspen desktop" if desktop else "Aspen API",
                            "terms": terms, "assignments": assignments, "averageSummary": summary})
