@@ -142,6 +142,7 @@ function setState(state) {
       renderClasses();
       renderFeed();
       renderAttendance();
+      if (typeof renderSchedule === "function") renderSchedule();
       route();
     }
   }
@@ -212,11 +213,11 @@ function switchView(view, focus, animate) {
   const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const canAnimate = animate && previous && previous !== view && !$("dashboard").hidden &&
     !reducedMotion && incoming.animate && outgoing.animate;
-  const order = {home: 0, grades: 1, detail: 1.5, attendance: 2};
+  const order = {home: 0, grades: 1, detail: 1.5, attendance: 2, schedule: 3};
   const direction = order[view] > order[previous] ? 1 : -1;
   const enter = () => {
     if (version !== navigationVersion) return;
-    for (const name of ["home", "grades", "attendance", "detail"]) {
+    for (const name of ["home", "grades", "attendance", "schedule", "detail"]) {
       const section = $(`${name}-view`);
       section.hidden = name !== view;
       section.inert = name !== view;
@@ -253,7 +254,7 @@ function switchView(view, focus, animate) {
 
 function route(focus = false, animate = true) {
   const hash = location.hash.slice(1) || "home";
-  let view = ["home", "grades", "attendance"].includes(hash) ? hash : "grades";
+  let view = ["home", "grades", "attendance", "schedule"].includes(hash) ? hash : "grades";
   if (hash.startsWith("class/")) {
     let id = "";
     const prefix = isCurrentClassRoute() ? "class/current/" : "class/";
@@ -282,7 +283,7 @@ function route(focus = false, animate = true) {
   });
   // The first reveal uses the final theme and selection, without a transition.
   $("main-navigation").setAttribute("data-ready", "");
-  const label = view === "detail" ? selectedCourse()?.courseName : {home: "Home", grades: "Grades", attendance: "Attendance"}[view];
+  const label = view === "detail" ? selectedCourse()?.courseName : {home: "Home", grades: "Grades", attendance: "Attendance", schedule: "Schedule"}[view];
   document.title = `BetterAspen · ${label}`;
 }
 
@@ -369,6 +370,7 @@ function startDashboard() {
   $("feed-type").addEventListener("change", () => { feedLimit = 12; renderFeed(); });
   $("feed-search").addEventListener("input", () => { feedLimit = 12; renderFeed(); });
   $("feed-more").addEventListener("click", () => { feedLimit += 12; renderFeed(); });
+  $("schedule-day-select").addEventListener("change", event => { selectedScheduleDate = event.target.value; renderSchedule(); });
 
   let initialMode = "light";
   try {

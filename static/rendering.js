@@ -115,6 +115,58 @@ function renderAttendance() {
   }
 }
 
+let selectedScheduleDate = "";
+
+function renderSchedule() {
+  const schedule = currentState?.snapshot?.schedule;
+  const days = schedule?.days || [];
+  const select = $("schedule-day-select");
+  const periods = $("schedule-periods");
+  const letters = $("schedule-letter-days");
+  select.replaceChildren();
+  periods.replaceChildren();
+  letters.replaceChildren();
+  if (!schedule?.available || !days.length) {
+    $("schedule-status").textContent = schedule?.error || "Aspen did not return schedule data yet.";
+    $("schedule-day-description").textContent = "Connect Aspen with schedule access to load your letter days.";
+    select.disabled = true;
+    periods.append(Object.assign(element("p", "No schedule days are available."), {className: "empty-result"}));
+    return;
+  }
+  select.disabled = false;
+  const today = new Date().toISOString().slice(0, 10);
+  const active = days.find(day => day.date === selectedScheduleDate) || days.find(day => day.date === today) || days[0];
+  selectedScheduleDate = active.date;
+  select.replaceChildren(...days.map(day => {
+    const option = element("option", `${formatDate(day.date)}${day.label ? ` · ${day.label}` : ""}`);
+    option.value = day.date;
+    return option;
+  }));
+  select.value = active.date;
+  $("schedule-status").textContent = `${days.length} school day${days.length === 1 ? "" : "s"} from Aspen${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
+  $("schedule-day-heading").textContent = active.label || formatDate(active.date);
+  $("schedule-day-description").textContent = active.unique ? "A unique schedule day" : "Your classes in period order";
+  for (const [index, period] of active.periods.entries()) {
+    const row = element("article");
+    row.className = "schedule-period";
+    row.append(element("span", period.period || String(index + 1)), element("div"));
+    row.children[1].append(element("strong", period.courseName || "Open period"));
+    const detail = [period.teacherName, period.meetingTime].filter(Boolean).join(" · ");
+    if (detail) row.children[1].append(element("small", detail));
+    periods.append(row);
+  }
+  const labels = [...new Set(days.map(day => day.label).filter(Boolean))];
+  if (!labels.length) labels.push(...[...new Set(days.map(day => day.date))].slice(0, 7));
+  for (const label of labels) {
+    const button = element("button", label);
+    button.type = "button";
+    button.className = `letter-day${active.label === label ? " is-selected" : ""}`;
+    const target = days.find(day => day.label === label);
+    button.addEventListener("click", () => { selectedScheduleDate = target.date; renderSchedule(); });
+    letters.append(button);
+  }
+}
+
 function classHref(course, currentPeriod = false) {
   return `#class/${currentPeriod ? "current/" : ""}${encodeURIComponent(course.studentScheduleOid)}`;
 }
