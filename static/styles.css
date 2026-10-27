@@ -1545,15 +1545,16 @@ body[data-mode='dark'] .course-card {
 
   .sidebar nav {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
   }
 
-  .sidebar nav a {
+  .sidebar nav a, .sidebar nav a[aria-current='page'] {
     justify-content: center;
     min-height: 44px;
     padding: 6px 4px;
     font-size: 0.68rem;
+    background: transparent;
   }
 
   .nav-icon {
