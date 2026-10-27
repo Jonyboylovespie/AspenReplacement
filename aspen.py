@@ -429,7 +429,7 @@ def read_activity(xml, student_oid):
     if not groups:
         raise AspenError("Aspen did not return recent activity for the signed-in student.")
     events, unsupported = [], set()
-    kinds = {"gradebookScore": "grade", "attendance": "dailyAttendance", "periodAttendance": "classAttendance"}
+    kinds = {"gradebookScore": "grade", "gradePost": "grade", "attendance": "dailyAttendance", "periodAttendance": "classAttendance"}
     for group in groups:
         for item in group:
             if item.tag not in kinds:
