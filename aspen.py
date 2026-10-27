@@ -90,13 +90,21 @@ def normalize_schedule(raw, classes=None):
                                     "studentScheduleOid": oid})
     for item in raw:
         if isinstance(item, str):
-            day = _schedule_date(item)
-            label = ""
-            if day:
-                remainder = item.replace(day, "", 1).strip(" -:|,\t")
-                if remainder and len(remainder) <= 40:
-                    label = remainder
-            add_day(day, label)
+            try:
+                decoded = json.loads(item)
+            except (TypeError, ValueError):
+                decoded = None
+            if isinstance(decoded, dict):
+                item = decoded
+            else:
+                day = _schedule_date(item)
+                label = ""
+                if day:
+                    remainder = item.replace(day, "", 1).strip(" -:|,\t")
+                    if remainder and len(remainder) <= 40:
+                        label = remainder
+                add_day(day, label)
+                continue
             continue
         if not isinstance(item, dict):
             continue
@@ -558,9 +566,25 @@ class AspenClient:
                 try:
                     today = date.today()
                     start_year = today.year if today.month >= 7 else today.year - 1
-                    raw_schedule = read("/calendar/schedule", {"from": date(start_year, 7, 1).isoformat(),
-                                                                  "to": date(start_year + 1, 6, 30).isoformat(),
+                    raw_schedule = []
+                    window_start = date(start_year, 7, 1)
+                    window_end = date(start_year + 1, 6, 30)
+                    # Aspen installations commonly cap calendar queries at one
+                    # month even though the OpenAPI document does not mention it.
+                    while window_start <= window_end:
+                        chunk_end = min(window_start + timedelta(days=30), window_end)
+                        chunk = read("/calendar/schedule", {"from": window_start.isoformat(),
+                                                              "to": chunk_end.isoformat(),
+                                                              "studentOid": student_oid, "schoolOid": student["schoolOid"]})
+                        if not chunk:
+                            # Older Aspen builds use the desktop portal's
+                            # month/day/year query format despite the REST docs.
+                            chunk = read("/calendar/schedule", {"from": window_start.strftime("%m/%d/%Y"),
+                                                                  "to": chunk_end.strftime("%m/%d/%Y"),
                                                                   "studentOid": student_oid, "schoolOid": student["schoolOid"]})
+                        if isinstance(chunk, list):
+                            raw_schedule.extend(chunk)
+                        window_start = chunk_end + timedelta(days=1)
                     schedule = normalize_schedule(raw_schedule, classes)
                     if schedule["days"] and not any(day["periods"] for day in schedule["days"]):
                         # Some Aspen deployments return only date/rotation strings

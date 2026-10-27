@@ -1088,6 +1088,20 @@ dialog details {
   background: #65aaf2;
 }
 
+/* Navigation uses the same four-color order as the school-day overview. */
+.sidebar nav a[data-view='home'] .nav-icon { border-color: #4f9cf9; }
+.sidebar nav a[data-view='grades'] .nav-icon { border-color: #f5c84b; }
+.sidebar nav a[data-view='schedule'] .nav-icon { border-color: #ef6a5b; }
+.sidebar nav a[data-view='attendance'] .nav-icon { border-color: #58b57b; }
+.sidebar nav a[data-view='home'][aria-current='page'] { color: #4f9cf9; }
+.sidebar nav a[data-view='grades'][aria-current='page'] { color: #c99b00; }
+.sidebar nav a[data-view='schedule'][aria-current='page'] { color: #ef6a5b; }
+.sidebar nav a[data-view='attendance'][aria-current='page'] { color: #31905a; }
+.sidebar nav a[data-view='home'][aria-current='page'] .nav-icon { background: #4f9cf9; }
+.sidebar nav a[data-view='grades'][aria-current='page'] .nav-icon { background: #f5c84b; }
+.sidebar nav a[data-view='schedule'][aria-current='page'] .nav-icon { background: #ef6a5b; }
+.sidebar nav a[data-view='attendance'][aria-current='page'] .nav-icon { background: #58b57b; }
+
 h1 {
   max-width: 18ch;
   font-size: clamp(2.35rem, 4vw, 4rem);
@@ -1345,6 +1359,19 @@ body[data-mode='dark'] .sidebar nav a:nth-child(2) .nav-icon {
 body[data-mode='dark'] .sidebar nav a:nth-child(3) .nav-icon {
   border-color: #ff887c;
 }
+
+body[data-mode='dark'] .sidebar nav a[data-view='home'] .nav-icon { border-color: #4f9cf9; }
+body[data-mode='dark'] .sidebar nav a[data-view='grades'] .nav-icon { border-color: #f6d26a; }
+body[data-mode='dark'] .sidebar nav a[data-view='schedule'] .nav-icon { border-color: #ff887c; }
+body[data-mode='dark'] .sidebar nav a[data-view='attendance'] .nav-icon { border-color: #69ce91; }
+body[data-mode='dark'] .sidebar nav a[data-view='home'][aria-current='page'] { color: #69b0ff; }
+body[data-mode='dark'] .sidebar nav a[data-view='grades'][aria-current='page'] { color: #f6d26a; }
+body[data-mode='dark'] .sidebar nav a[data-view='schedule'][aria-current='page'] { color: #ff887c; }
+body[data-mode='dark'] .sidebar nav a[data-view='attendance'][aria-current='page'] { color: #69ce91; }
+body[data-mode='dark'] .sidebar nav a[data-view='home'][aria-current='page'] .nav-icon { background: #4f9cf9; }
+body[data-mode='dark'] .sidebar nav a[data-view='grades'][aria-current='page'] .nav-icon { background: #f6d26a; }
+body[data-mode='dark'] .sidebar nav a[data-view='schedule'][aria-current='page'] .nav-icon { background: #ff887c; }
+body[data-mode='dark'] .sidebar nav a[data-view='attendance'][aria-current='page'] .nav-icon { background: #69ce91; }
 
 body[data-mode='dark'] .sidebar nav a[aria-current='page'] .nav-icon {
   box-shadow: inset 0 0 0 5px #102a39;
