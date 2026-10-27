@@ -116,48 +116,45 @@ function renderAttendance() {
 }
 
 let selectedScheduleDate = "";
+let scheduleCountdownTimer = null;
 
 function scheduleFallback(snapshot) {
   const classes = snapshot?.classes || [];
   if (!classes.length) return {available: false, days: [], letterDays: [], error: "Aspen did not return a student schedule."};
+  const periods = classes.map((course, index) => ({period: String(course.period || course.periodNumber || index + 1),
+    courseName: course.courseName || "Open period", teacherName: course.teacherName || "",
+    meetingTime: course.meetingTime || "", startTime: course.startTime || "", endTime: course.endTime || "",
+    studentScheduleOid: course.studentScheduleOid}));
   return {available: true, fallback: true,
-          note: "Aspen did not expose letter-day dates; showing the current class order.",
-          days: [{date: new Date().toISOString().slice(0, 10), label: "Current order", unique: true,
-                  periods: classes.map((course, index) => ({period: String(course.period || course.periodNumber || index + 1),
-                    courseName: course.courseName || "Open period", teacherName: course.teacherName || "",
-                    meetingTime: course.meetingTime || "", studentScheduleOid: course.studentScheduleOid}))}],
+          note: "Aspen did not expose letter-day dates; showing the imported class order across the rotation.",
+          days: ["A", "B", "C", "D", "E", "F", "G", "H"].map((label, index) => ({
+            date: new Date(Date.now() + index * 86400000).toISOString().slice(0, 10), label, unique: false, periods
+          })),
           letterDays: []};
 }
 
 function renderSchedule() {
   const schedule = currentState?.snapshot?.schedule || scheduleFallback(currentState?.snapshot);
   const days = schedule?.days || [];
-  const select = $("schedule-day-select");
   const periods = $("schedule-periods");
-  const letters = $("schedule-letter-days");
-  select.replaceChildren();
+  const gridHead = $("schedule-grid-head");
+  const gridBody = $("schedule-grid-body");
   periods.replaceChildren();
-  letters.replaceChildren();
+  gridHead.replaceChildren();
+  gridBody.replaceChildren();
   if (!schedule?.available || !days.length) {
     $("schedule-status").textContent = schedule?.error || "Aspen did not return schedule data yet.";
     $("schedule-day-description").textContent = "Connect Aspen with schedule access to load your letter days.";
-    select.disabled = true;
     periods.append(Object.assign(element("p", "No schedule days are available."), {className: "empty-result"}));
+    $("schedule-countdown").textContent = "—";
     return;
   }
-  select.disabled = false;
   const today = new Date().toISOString().slice(0, 10);
-  const active = days.find(day => day.date === selectedScheduleDate) || days.find(day => day.date === today) || days[0];
+  const active = days.find(day => day.date === today) || days.find(day => day.date === selectedScheduleDate) || days[0];
   selectedScheduleDate = active.date;
-  select.replaceChildren(...days.map(day => {
-    const option = element("option", `${formatDate(day.date)}${day.label ? ` · ${day.label}` : ""}`);
-    option.value = day.date;
-    return option;
-  }));
-  select.value = active.date;
   $("schedule-status").textContent = schedule.fallback ? schedule.note : `${days.length} school day${days.length === 1 ? "" : "s"} from Aspen${schedule.fetchedAt ? ` · Updated ${new Date(schedule.fetchedAt).toLocaleString()}` : ""}`;
   $("schedule-day-heading").textContent = active.label || formatDate(active.date);
-  $("schedule-day-description").textContent = active.unique ? "A unique schedule day" : "Your classes in period order";
+  $("schedule-day-description").textContent = active.unique ? "A unique schedule today" : "Your classes in period order";
   for (const [index, period] of active.periods.entries()) {
     const row = element("article");
     row.className = "schedule-period";
@@ -167,16 +164,72 @@ function renderSchedule() {
     if (detail) row.children[1].append(element("small", detail));
     periods.append(row);
   }
-  const labels = [...new Set(days.map(day => day.label).filter(Boolean))];
-  if (!labels.length) labels.push(...[...new Set(days.map(day => day.date))].slice(0, 7));
-  for (const label of labels) {
-    const button = element("button", label);
-    button.type = "button";
-    button.className = `letter-day${active.label === label ? " is-selected" : ""}`;
-    const target = days.find(day => day.label === label);
-    button.addEventListener("click", () => { selectedScheduleDate = target.date; renderSchedule(); });
-    letters.append(button);
+  renderScheduleGrid(days, active);
+  updateScheduleCountdown(active);
+}
+
+function renderScheduleGrid(days, active) {
+  const columns = [];
+  const seen = new Set();
+  for (const day of [active, ...days]) {
+    const key = day.label || day.date;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    columns.push(day);
+    if (columns.length === 8) break;
   }
+  const headRow = element("tr");
+  headRow.append(element("th", "Period"));
+  for (const day of columns) {
+    const th = element("th", day.label || formatDate(day.date));
+    if (day.date === active.date) th.className = "schedule-grid-current";
+    headRow.append(th);
+  }
+  $("schedule-grid-head").append(headRow);
+  const maxPeriod = Math.max(0, ...columns.flatMap(day => day.periods.map((item, index) => Number(item.period) || index + 1)));
+  for (let periodNumber = 1; periodNumber <= maxPeriod; periodNumber++) {
+    const row = element("tr");
+    row.append(element("th", String(periodNumber)));
+    for (const day of columns) {
+      const item = day.periods.find((candidate, index) => (Number(candidate.period) || index + 1) === periodNumber);
+      const cell = element("td", item?.courseName || "—");
+      if (day.date === active.date) cell.className = "schedule-grid-current";
+      row.append(cell);
+    }
+    $("schedule-grid-body").append(row);
+  }
+}
+
+function clockMinutes(value) {
+  const match = String(value || "").match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (!match) return null;
+  let hour = Number(match[1]) % 12;
+  if (match[3].toUpperCase() === "PM") hour += 12;
+  return hour * 60 + Number(match[2] || 0);
+}
+
+function updateScheduleCountdown(day) {
+  const countdown = $("schedule-countdown");
+  const times = day.periods.map((item, index) => {
+    const match = String(item.meetingTime || `${item.startTime || ""} ${item.endTime || ""}`).match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM))/ig);
+    return {period: item.period || String(index + 1), name: item.courseName, start: clockMinutes(match?.[0]), end: clockMinutes(match?.[1])};
+  }).filter(item => item.start !== null);
+  if (!times.length) {
+    countdown.textContent = "Next class time unavailable";
+    return;
+  }
+  const now = new Date();
+  const current = now.getHours() * 60 + now.getMinutes();
+  const currentClass = times.find(item => item.end !== null && item.start <= current && current < item.end);
+  if (currentClass) {
+    const remaining = Math.max(0, currentClass.end - current);
+    countdown.textContent = `Class change in ${Math.floor(remaining / 60)}h ${String(remaining % 60).padStart(2, "0")}m`;
+    return;
+  }
+  const next = times.find(item => item.start > current);
+  if (!next) { countdown.textContent = "School day complete"; return; }
+  const remaining = Math.max(0, next.start - current);
+  countdown.textContent = `${next.name || `Period ${next.period}`} in ${Math.floor(remaining / 60)}h ${String(remaining % 60).padStart(2, "0")}m`;
 }
 
 function classHref(course, currentPeriod = false) {

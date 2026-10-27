@@ -370,7 +370,13 @@ function startDashboard() {
   $("feed-type").addEventListener("change", () => { feedLimit = 12; renderFeed(); });
   $("feed-search").addEventListener("input", () => { feedLimit = 12; renderFeed(); });
   $("feed-more").addEventListener("click", () => { feedLimit += 12; renderFeed(); });
-  $("schedule-day-select").addEventListener("change", event => { selectedScheduleDate = event.target.value; renderSchedule(); });
+  setInterval(() => {
+    if (location.hash === "#schedule" && typeof updateScheduleCountdown === "function") {
+      const schedule = currentState?.snapshot?.schedule;
+      const day = schedule?.days?.find(item => item.date === new Date().toISOString().slice(0, 10)) || schedule?.days?.[0];
+      if (day) updateScheduleCountdown(day);
+    }
+  }, 30000);
 
   let initialMode = "light";
   try {

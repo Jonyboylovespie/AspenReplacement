@@ -87,6 +87,8 @@ def normalize_schedule(raw, classes=None):
             row["periods"].append({"period": str(period), "courseName": name,
                                     "teacherName": section.get("teacherName") or course.get("teacherName", ""),
                                     "meetingTime": section.get("meetingTime") or course.get("meetingTime", ""),
+                                    "startTime": section.get("startTime") or course.get("startTime", ""),
+                                    "endTime": section.get("endTime") or course.get("endTime", ""),
                                     "studentScheduleOid": oid})
     for item in raw:
         if isinstance(item, str):
@@ -155,11 +157,11 @@ def schedule_from_classes(classes):
                         "teacherName": course.get("teacherName", ""),
                         "meetingTime": course.get("meetingTime", ""),
                         "studentScheduleOid": course.get("studentScheduleOid")})
-    today = date.today().isoformat()
-    return {"available": bool(periods), "days": [{"date": today, "label": "Current order", "unique": True,
-                                                    "periods": periods}] if periods else [],
+    days = [{"date": (date.today() + timedelta(days=index)).isoformat(), "label": label, "unique": False,
+             "periods": periods} for index, label in enumerate("ABCDEFGH")] if periods else []
+    return {"available": bool(periods), "days": days,
             "letterDays": [], "fallback": True,
-            "note": "Aspen did not expose letter-day dates; showing the current class order."}
+            "note": "Aspen did not expose letter-day dates; showing the imported class order across the rotation."}
 
 
 class AspenError(Exception):
@@ -774,7 +776,7 @@ class AspenClient:
                     shared["summaries"][schedule_oid] = summary
             desktop = canonical.get(schedule_oid)
             percentage = numeric_grade(course.get("percentageValue"))
-            result.append({**academic_fields(course, "studentScheduleOid courseName teacherName teacherEmail meetingTime period periodNumber"),
+            result.append({**academic_fields(course, "studentScheduleOid courseName teacherName teacherEmail meetingTime startTime endTime period periodNumber"),
                            "displayGrade": desktop if desktop is not None else percentage or "",
                            "gradeSource": "Aspen desktop" if desktop else "Aspen API",
                            "terms": terms, "assignments": assignments, "averageSummary": summary})
