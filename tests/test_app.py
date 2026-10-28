@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import Store
 from helpers import create_test_app as create_app
 from aspen import (AspenError, AuthenticationRequired, AspenClient, form_fields, parse_cookies,
-                   read_activity, read_attendance, read_average_summary, read_class_list,
+                   read_activity, read_attendance, read_average_summary, read_class_list_form,
                    read_schedule_matrix)
 
 
@@ -48,8 +48,7 @@ class ScraperTests(unittest.TestCase):
         <select name="termFilter"><option value="current" selected>Current Term</option></select>
         <table><tr><th>Description</th><th>Term&nbsp;Performance</th></tr>
         <tr><td><a href="javascript:doParamSubmit(2100, document.forms['classListForm'], 'SSC123')">Physics</a></td><td>97.9 A</td></tr></table></form>'''
-        _, form, grades = read_class_list(html)
-        self.assertEqual(grades, {"SSC123": "97.9"})
+        _, form = read_class_list_form(html)
         values = dict(form_fields(form))
         self.assertEqual(values["org.apache.struts.taglib.html.TOKEN"], "live-token")
         self.assertEqual(values["termFilter"], "current")

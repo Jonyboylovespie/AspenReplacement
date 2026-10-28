@@ -162,28 +162,19 @@ def collect_assignment(item):
     return assignment
 
 
-def read_class_list(html):
+def read_class_list_form(html):
+    """Read the desktop class-list form without importing Aspen's grade column."""
     soup = BeautifulSoup(html, "html.parser")
     form = soup.find("form", attrs={"name": "classListForm"})
     if not form:
         raise AuthenticationRequired("The desktop session has expired. Reconnect Aspen to load its displayed averages.")
-    grades = {}
-    for link in soup.find_all("a", href=re.compile(r"doParamSubmit\(2100")):
-        match = re.search(r"SSC[A-Za-z0-9]+", link["href"])
-        row = link.find_parent("tr")
-        if not match or not row:
-            continue
-        table = row.find_parent("table")
-        header = next((r for r in table.find_all("tr") if "Term Performance" in text_of(r)
-                       and not r.find("a", href=re.compile(r"doParamSubmit\(2100"))), None)
-        cells = row.find_all(["td", "th"], recursive=False)
-        if header:
-            headings = [text_of(c) for c in header.find_all(["td", "th"], recursive=False)]
-            if "Term Performance" in headings:
-                index = headings.index("Term Performance")
-                if index < len(cells):
-                    grades[match[0]] = numeric_grade(text_of(cells[index]))
-    return soup, form, grades
+    return soup, form
+
+
+def read_class_list(html):
+    """Compatibility shim; no class grades are read from this page."""
+    soup, form = read_class_list_form(html)
+    return soup, form, {}
 
 
 def form_fields(form):
@@ -206,10 +197,20 @@ def form_fields(form):
 
 
 def read_average_summary(html):
+    return read_average_summary_details(html)[0]
+
+
+def read_average_summary_details(html):
+    """Read the display summary and any explicit category weights.
+
+    Aspen's desktop summary is retained for explanation, but its Term
+    Performance column is deliberately ignored.  The weights are keyed by
+    category and quarter so course grades can be calculated from assignments.
+    """
     soup = BeautifulSoup(html, "html.parser")
     label = soup.find(lambda t: t.name in {"td", "th"} and text_of(t) == "Gradebook average")
     if not label:
-        return []
+        return [], {}
     table = label.find_parent("table")
     rows = []
     for row in table.find_all("tr"):
@@ -219,7 +220,97 @@ def read_average_summary(html):
         if cells:
             rows.append([dict(text=text_of(c), header=c.name == "th",
                               rowspan=int(c.get("rowspan", 1)), colspan=int(c.get("colspan", 1))) for c in cells])
-    return numeric_summary(rows)
+    summary = numeric_summary(rows)
+
+    # Resolve the logical table columns, including row/col spans, so a
+    # category's Weight cell can be associated with the right quarter.
+    placed, spans = [], {}
+    for row in rows:
+        cells, column = [], 0
+        for cell in row:
+            while spans.get(column, 0):
+                column += 1
+            cells.append((column, cell))
+            width = cell.get("colspan", 1)
+            for offset in range(width):
+                spans[column + offset] = cell.get("rowspan", 1)
+            column += width
+        spans = {col: remaining - 1 for col, remaining in spans.items() if remaining > 1}
+        placed.append(cells)
+    headers = {}
+    for column, cell in placed[0] if placed else []:
+        value = cell["text"]
+        if re.fullmatch(r"Q[1-4]", value):
+            headers[value] = column
+    weights = {}
+    active_category = ""
+    labels = {"Category", "Weight", "Avg", "Average", "Gradebook average", "Last posted grade"}
+    for cells in placed[1:]:
+        by_column = {column: cell["text"] for column, cell in cells}
+        first = by_column.get(0, "")
+        if first and first not in labels:
+            active_category = first
+        weight_values = [(column, cell["text"]) for column, cell in cells
+                         if re.fullmatch(r"\d+(?:\.\d+)?\s*%", cell["text"])]
+        if not weight_values:
+            continue
+        category = active_category
+        if not category:
+            continue
+        # A compact summary has one Weight column; a quarter matrix may have
+        # one percentage under each quarter heading.
+        for column, raw in weight_values:
+            quarter = next((name for name, index in headers.items() if index == column), "all")
+            weights.setdefault(category, {})[quarter] = float(numeric_grade(raw).rstrip("%"))
+    return summary, weights
+
+
+def calculated_grade(assignments, category_weights=None, quarter=None):
+    """Calculate a percentage from scored assignments and category weights."""
+    categories = {}
+    for assignment in assignments or []:
+        if (quarter not in (None, "current", "all") and assignment.get("termOid")
+                and assignment.get("termOid") != quarter):
+            continue
+        possible = numeric_grade(assignment.get("totalPoints"))
+        if possible is None or float(possible) <= 0:
+            continue
+        scores = assignment.get("scoreLightModels") or []
+        active = [score for score in scores if not score.get("dropped") and not score.get("exempt")]
+        numeric_scores = [numeric_grade(score.get("score")) for score in active]
+        numeric_scores = [score for score in numeric_scores if score is not None]
+        if not numeric_scores:
+            continue
+        score = float(numeric_scores[-1])
+        category = assignment.get("categoryName") or "Assignment"
+        earned, total = categories.setdefault(category, [0.0, 0.0])
+        categories[category] = [earned + score, total + float(possible)]
+    if not categories:
+        return ""
+
+    quarter_name = None
+    if quarter and re.fullmatch(r"GTM[A-Za-z0-9]+", str(quarter)):
+        # The caller supplies the term ID; category weights are also retained
+        # by quarter label, so use the first available quarter when no label
+        # is available in the assignment records.
+        quarter_name = None
+    selected_weights = {}
+    if category_weights:
+        for category, values in category_weights.items():
+            if quarter_name and quarter_name in values:
+                selected_weights[category] = values[quarter_name]
+            elif values:
+                selected_weights[category] = next(iter(values.values()))
+    if selected_weights:
+        weighted = [(earned / total * 100, selected_weights.get(category))
+                    for category, (earned, total) in categories.items()
+                    if category in selected_weights and total > 0]
+        weight_total = sum(weight for _, weight in weighted)
+        if weighted and weight_total > 0:
+            return f"{sum(average * weight for average, weight in weighted) / weight_total:.2f}".rstrip("0").rstrip(".")
+    earned = sum(values[0] for values in categories.values())
+    total = sum(values[1] for values in categories.values())
+    return f"{earned / total * 100:.2f}".rstrip("0").rstrip(".") if total > 0 else ""
 
 
 def activity_date(value, pattern="%Y-%m-%d"):
@@ -509,17 +600,14 @@ class AspenClient:
                            "schoolOid": school["oid"], "districtContext": year}) or [])
         if quarter not in {"current", "all"} and quarter not in {term["oid"] for term in quarters}:
             raise AspenError("That quarter is not available for this school year. Choose another quarter.")
-        canonical = {}
         use_desktop = self.desktop_available and year == "current"
         if use_desktop and quarter == "current":
+            # Prime the desktop session before attendance/activity reads. This
+            # validates the session and supplies no course-grade data.
             try:
-                _, _, canonical = read_class_list(self.request("GET", CLASS_LIST_PATH).text)
-                if not canonical:
-                    warnings.append("Aspen's desktop grade columns could not be read. Averages are from the API.")
+                read_class_list_form(self.request("GET", CLASS_LIST_PATH).text)
             except AspenError as error:
                 warnings.append(str(error))
-        elif not self.desktop_available:
-            warnings.append("The desktop cookie is missing. Course averages are from the API and may differ from Aspen's desktop view.")
         if shared is not None and "features" in shared:
             attendance, activity, schedule = shared["features"]
         elif self.desktop_available:
@@ -567,25 +655,25 @@ class AspenClient:
                 if shared is not None:
                     shared.setdefault("courses", {})[key] = details
             terms, assignments = details
-            summary = []
+            summary, category_weights = [], {}
             if use_desktop and shared is not None and schedule_oid in shared["summaries"]:
-                summary = shared["summaries"][schedule_oid]
+                summary, category_weights = shared["summaries"][schedule_oid]
             elif use_desktop:
                 try:
                     # Obtain a fresh form/token for each navigation. No grade edits are sent.
-                    _, form, _ = read_class_list(self.request("GET", CLASS_LIST_PATH).text)
+                    _, form = read_class_list_form(self.request("GET", CLASS_LIST_PATH).text)
                     fields = [(k, v) for k, v in form_fields(form) if k not in {"userEvent", "userParam"}]
                     fields.extend([("userEvent", "2100"), ("userParam", schedule_oid)])
-                    summary = read_average_summary(self.request("POST", form.get("action"), data=fields).text)
+                    summary, category_weights = read_average_summary_details(
+                        self.request("POST", form.get("action"), data=fields).text)
                 except AspenError as error:
                     warnings.append(f"{course['courseName']}: {error}")
                 if shared is not None:
-                    shared["summaries"][schedule_oid] = summary
-            desktop = canonical.get(schedule_oid)
-            percentage = numeric_grade(course.get("percentageValue"))
+                    shared["summaries"][schedule_oid] = summary, category_weights
+            percentage = calculated_grade(assignments, category_weights, quarter)
             result.append({**academic_fields(course, "studentScheduleOid courseName teacherName teacherEmail meetingTime startTime endTime period periodNumber"),
-                           "displayGrade": desktop if desktop is not None else percentage or "",
-                           "gradeSource": "Aspen desktop" if desktop else "Aspen API",
+                           "displayGrade": percentage,
+                           "gradeSource": "Calculated from assignments",
                            "terms": terms, "assignments": assignments, "averageSummary": summary})
         return {"student": {"name": student["name"], "studentOid": student_oid},
                 "classes": result, "attendance": attendance, "activityFeed": activity,

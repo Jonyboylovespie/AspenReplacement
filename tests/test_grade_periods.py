@@ -35,8 +35,8 @@ class GradePeriodTests(unittest.TestCase):
 
         with patch.object(client, "api", side_effect=api):
             data = client.sync_period(quarter="term-q2")
-        self.assertEqual(data["classes"][0]["displayGrade"], "0")
-        self.assertEqual(data["classes"][0]["gradeSource"], "Aspen API")
+        self.assertEqual(data["classes"][0]["displayGrade"], "")
+        self.assertEqual(data["classes"][0]["gradeSource"], "Calculated from assignments")
         self.assertNotIn("A+", json.dumps(data))
         self.assertNotIn("sectionTermAverage", data["classes"][0])
         self.assertNotIn("displayLetterGradesOnly", data["classes"][0])
@@ -194,7 +194,7 @@ class GradePeriodTests(unittest.TestCase):
             self.assertEqual(set(data["gradePeriods"]), {
                 "current:current", "current:all", "current:current-q1", "current:current-q2",
                 "previous:all", "previous:previous-q1", "previous:previous-q2"})
-            self.assertEqual(data["gradePeriods"]["previous:previous-q2"]["classes"][0]["displayGrade"], "80")
+            self.assertEqual(data["gradePeriods"]["previous:previous-q2"]["classes"][0]["displayGrade"], "")
             self.assertEqual(sum(path == "/assignments" for path, _ in calls), 4)
             self.assertEqual(sum(path == "/users/current" for path, _ in calls), 1)
             calls.clear()
