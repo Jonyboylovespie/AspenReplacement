@@ -478,6 +478,25 @@ def cache_grade_periods(load_period, year="current", quarter="current"):
         for term in first["gradeFilters"]["quarters"]:
             if f"{context}:{term['value']}" not in periods:
                 add(load_period(context, term["value"]))
+    # Aspen's `current` classes endpoint identifies the active roster but does
+    # not include a quarter ID. Match that roster against the explicit quarter
+    # views so Current quarter uses Q2 (or whichever term Aspen has activated)
+    # instead of combining scores from every term with posted grades.
+    current_ids = {course.get("studentScheduleOid") for course in baseline["classes"]}
+    current_matches = []
+    if current_ids:
+        for key, period in periods.items():
+            if not key.startswith("current:") or key.endswith((":current", ":all")):
+                continue
+            ids = {course.get("studentScheduleOid") for course in period["classes"]}
+            if ids == current_ids:
+                current_matches.append(key)
+    if len(current_matches) == 1:
+        active_key = current_matches[0]
+        active = periods[active_key]
+        current_filters = {**baseline["gradeFilters"], "quarter": "current"}
+        periods["current:current"] = {**active, "gradeFilters": current_filters}
+        baseline = {**baseline, **periods["current:current"]}
     if year == "previous" and quarter == "current":
         quarter = "all"
     selected = periods.get(f"{year}:{quarter}") or periods["current:current"]
