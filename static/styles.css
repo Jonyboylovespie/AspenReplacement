@@ -830,6 +830,21 @@ tbody tr:last-child td {
   color: var(--muted);
 }
 
+.comment-link {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: inherit;
+}
+
+.comment-link:hover {
+  border-color: transparent;
+  color: var(--ink);
+  text-decoration: underline;
+}
+
 summary {
   color: var(--accent);
 }
@@ -939,6 +954,14 @@ dialog p {
   overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.comment-dialog {
+  width: min(420px, calc(100% - 32px));
+}
+
+.comment-dialog #comment-content {
+  white-space: pre-wrap;
 }
 
 dialog details {

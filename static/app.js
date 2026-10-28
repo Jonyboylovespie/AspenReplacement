@@ -348,6 +348,7 @@ function startDashboard() {
     }
   });
   $("connection-dialog").addEventListener("close", () => $("cookie-form").reset());
+  $("close-comment").addEventListener("click", () => $("comment-dialog").close());
   $("refresh").addEventListener("click", () => action("/api/refresh"));
   $("retry-session").addEventListener("click", () => action("/api/refresh"));
   $("disconnect").addEventListener("click", () => action("/api/disconnect"));

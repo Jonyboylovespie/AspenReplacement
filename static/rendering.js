@@ -222,10 +222,17 @@ function renderAssignments() {
     const row = element("tr");
     for (const value of [item.name, item.termName, item.categoryName, formatDate(item.assignedDate), formatDate(item.dueDate), score.score, item.totalPoints ?? "—", assignmentGradeDisplay(score.score, item.totalPoints), score.status]) row.append(element("td", value));
     const cell = element("td");
-    if (item.description) {
-      const details = element("details");
-      details.append(element("summary", "View description"), element("p", item.description));
-      cell.append(details);
+    const comments = (item.scoreLightModels || []).map(score => String(score.comment || "").trim()).filter(Boolean);
+    if (comments.length) {
+      const view = element("button", "View");
+      view.type = "button";
+      view.className = "comment-link";
+      view.addEventListener("click", () => {
+        $("comment-title").textContent = item.name || "Comment";
+        $("comment-content").textContent = comments.join("\n\n");
+        $("comment-dialog").showModal();
+      });
+      cell.append(view);
     } else cell.textContent = "—";
     row.append(cell);
     $("assignments").append(row);
