@@ -152,10 +152,10 @@ def academic_fields(data, keys):
 
 
 def collect_assignment(item):
-    assignment = academic_fields(item, "oid name categoryName assignedDate dueDate totalPoints description")
+    assignment = academic_fields(item, "oid name categoryName assignedDate dueDate totalPoints description comment feedback feedbackText assignmentFeedback")
     assignment["scoreLightModels"] = []
     for source in item.get("scoreLightModels", []):
-        score = academic_fields(source, "specialCode behavior dropped exempt missing late incomplete comment")
+        score = academic_fields(source, "specialCode behavior dropped exempt missing late incomplete comment feedback feedbackText assignmentFeedback")
         if "score" in source:
             score["score"] = numeric_grade(source["score"])
         assignment["scoreLightModels"].append(score)
@@ -257,6 +257,56 @@ def read_average_summary_details(html):
             quarter = next((name for name, index in headers.items() if index == column), "all")
             weights.setdefault(category, {})[quarter] = float(numeric_grade(raw).rstrip("%"))
     return summary, weights
+
+
+def read_assignment_comments(html):
+    """Read Aspen desktop assignment feedback keyed by assignment OID."""
+    soup = BeautifulSoup(html, "html.parser")
+    header = next((row for row in soup.find_all("tr")
+                   if any(text_of(cell) == "Assignment feedback"
+                          for cell in row.find_all(["td", "th"], recursive=False))), None)
+    if not header:
+        return {}
+    headings = [text_of(cell) for cell in header.find_all(["td", "th"], recursive=False)]
+    feedback_index = headings.index("Assignment feedback")
+    table = header.find_parent("table")
+    comments = {}
+    for row in table.find_all("tr"):
+        if row.find_parent("table") != table or "listCell" not in row.get("class", []):
+            continue
+        selected = row.find("input", attrs={"name": "selectedOids"})
+        cells = row.find_all(["td", "th"], recursive=False)
+        if not selected or feedback_index >= len(cells):
+            continue
+        comment = text_of(cells[feedback_index])
+        if comment:
+            comments[selected["value"]] = comment
+    return comments
+
+
+def desktop_assignment_comments(client, detail_html, detail_url, term_oid):
+    """Navigate the desktop assignment list and return feedback for a term."""
+    soup = BeautifulSoup(detail_html, "html.parser")
+    link = soup.find("a", href=re.compile(r"portalAssignmentList\.do\?.*gcd"))
+    if not link:
+        return {}
+    assignment_url = urljoin(detail_url, link["href"])
+    listing = client.request("GET", assignment_url)
+    listing_soup = BeautifulSoup(listing.text, "html.parser")
+    form = listing_soup.find("form", attrs={"name": "portalAssignmentListForm"})
+    if not form:
+        return {}
+    fields = form_fields(form)
+    replaced = False
+    updated = []
+    for name, value in fields:
+        if name == "gradeTermOid":
+            value, replaced = term_oid, True
+        updated.append((name, value))
+    if not replaced:
+        updated.append(("gradeTermOid", term_oid))
+    response = client.request("POST", urljoin(listing.url, form.get("action")), data=updated)
+    return read_assignment_comments(response.text)
 
 
 def calculated_grade(assignments, category_weights=None, quarter=None):
@@ -668,6 +718,24 @@ class AspenClient:
                 if shared is not None:
                     shared.setdefault("courses", {})[key] = details
             terms, assignments = details
+            if use_desktop and assignments and not any(
+                    a.get("comment") or a.get("feedback") for a in assignments):
+                try:
+                    _, detail_form = read_class_list_form(self.request("GET", CLASS_LIST_PATH).text)
+                    fields = [(k, v) for k, v in form_fields(detail_form)
+                              if k not in {"userEvent", "userParam"}]
+                    fields.extend([("userEvent", "2100"), ("userParam", schedule_oid)])
+                    detail_response = self.request("POST", detail_form.get("action"), data=fields)
+                    for term in terms:
+                        if not any(a.get("termOid") == term["oid"] for a in assignments):
+                            continue
+                        comments = desktop_assignment_comments(self, detail_response.text,
+                                                              detail_response.url, term["oid"])
+                        for assignment in assignments:
+                            if assignment.get("oid") in comments:
+                                assignment["comment"] = comments[assignment["oid"]]
+                except AspenError as error:
+                    warnings.append(f"{course['courseName']}: {error}")
             summary, category_weights = [], {}
             if use_desktop and shared is not None and schedule_oid in shared["summaries"]:
                 summary, category_weights = shared["summaries"][schedule_oid]

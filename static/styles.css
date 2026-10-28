@@ -823,6 +823,17 @@ tbody tr:last-child td {
   font-weight: 700;
 }
 
+.assignment-table tr:is(.grade-a, .grade-a-minus, .grade-b, .grade-low, .grade-none) td:first-child {
+  border-left: 4px solid var(--route);
+  color: var(--grade-color);
+}
+
+.assignment-table tr:is(.grade-a, .grade-a-minus, .grade-b, .grade-low, .grade-none) td:nth-child(6),
+.assignment-table tr:is(.grade-a, .grade-a-minus, .grade-b, .grade-low, .grade-none) td:nth-child(8) {
+  color: var(--grade-color);
+  font-weight: 700;
+}
+
 .assignment-table details p {
   min-width: 150px;
   max-width: 280px;

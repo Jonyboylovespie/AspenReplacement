@@ -219,10 +219,14 @@ function renderAssignments() {
   $("assignments-empty").hidden = !!assignments.length;
   for (const item of assignments) {
     const score = scoreDisplay(item);
+    const assignmentGrade = assignmentGradeDisplay(score.score, item.totalPoints);
     const row = element("tr");
-    for (const value of [item.name, item.termName, item.categoryName, formatDate(item.assignedDate), formatDate(item.dueDate), score.score, item.totalPoints ?? "—", assignmentGradeDisplay(score.score, item.totalPoints), score.status]) row.append(element("td", value));
+    row.className = letterGradeClass(assignmentGrade);
+    for (const value of [item.name, item.termName, item.categoryName, formatDate(item.assignedDate), formatDate(item.dueDate), score.score, item.totalPoints ?? "—", assignmentGrade, score.status]) row.append(element("td", value));
     const cell = element("td");
-    const comments = (item.scoreLightModels || []).map(score => String(score.comment || "").trim()).filter(Boolean);
+    const comments = [item.comment, item.feedback, item.feedbackText, item.assignmentFeedback,
+      ...(item.scoreLightModels || []).flatMap(score => [score.comment, score.feedback, score.feedbackText, score.assignmentFeedback])]
+      .map(value => String(value || "").trim()).filter(Boolean);
     if (comments.length) {
       const view = element("button", "View");
       view.type = "button";
