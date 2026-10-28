@@ -171,12 +171,6 @@ def read_class_list_form(html):
     return soup, form
 
 
-def read_class_list(html):
-    """Compatibility shim; no class grades are read from this page."""
-    soup, form = read_class_list_form(html)
-    return soup, form, {}
-
-
 def form_fields(form):
     fields = []
     for element in form.find_all(["input", "select", "textarea"]):
