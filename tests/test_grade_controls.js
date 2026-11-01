@@ -118,6 +118,7 @@ test("home stays current through grade changes, polling, reload, and class navig
     }]};
   }
   const current = period("current", "current", "Current math", "95", 10);
+  current.gradeFilters.currentTermOid = "q2";
   const otherQuarter = period("current", "q2", "Current math", "70", 20);
   const previous = period("previous", "all", "Previous math", "80", 30);
   previous.classes.push({studentScheduleOid: "old-only", courseName: "Old class", displayGrade: "85"});
@@ -154,8 +155,12 @@ test("home stays current through grade changes, polling, reload, and class navig
   context.route();
   assert.equal(nodes.get("course-grade").textContent, "95 A");
   assert.equal(nodes.get("term-select").value, "all");
+  assert.deepEqual(nodes.get("term-select").children.slice(0, 2).map(option => [option.textContent, option.value]),
+    [["All terms", "all"], ["Current term", "current"]]);
+  vm.runInContext('selectedTerm = "current"; renderAssignments();', context);
+  assert.equal(nodes.get("assignment-count").textContent, "1 assignment.");
   assert.match(nodes.get("course-info").textContent, /Current school year · Current quarter/);
-  location.hash = context.classHref({studentScheduleOid: nodes.get("class-select").value}, context.isCurrentClassRoute());
+  location.hash = nodes.get("home-classes").children[0].href;
   context.route();
   assert.equal(nodes.get("course-grade").textContent, "95 A");
   assert.equal(nodes.get("grade-quarter").value, "q2");
@@ -171,7 +176,6 @@ test("home stays current through grade changes, polling, reload, and class navig
   location.hash = nodes.get("home-classes").children[0].href;
   context.route();
   assert.equal(nodes.get("details-title").textContent, "Current math");
-  assert.equal(nodes.get("class-select").children.length, 1);
   for (const nextState of [state, {...state, syncing: true},
     {...state, snapshot: {...state.snapshot, syncedAt: "refreshed", ...previous}}]) {
     context.setState(nextState);

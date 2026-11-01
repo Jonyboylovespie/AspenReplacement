@@ -168,16 +168,10 @@ function selectedCourse() {
 function renderDetails() {
   const courses = classesWithGradesFirst(detailSnapshot()?.classes || []);
   if (!courses.some(course => course.studentScheduleOid === selectedClass)) selectedClass = courses[0]?.studentScheduleOid || "";
-  $("class-select").replaceChildren(...courses.map(course => {
-    const option = element("option", course.courseName);
-    option.value = course.studentScheduleOid;
-    return option;
-  }));
   const course = selectedCourse();
   $("details-title").textContent = course?.courseName || "Class breakdown";
   $("course-grade").textContent = classGradeDisplay(course?.displayGrade);
   $("course-grade").className = letterGradeClass(course?.displayGrade);
-  $("class-select").value = selectedClass;
   $("course-info").textContent = course ? [course.teacherName, course.teacherEmail, gradePeriodLabel(gradePeriod(detailSnapshot()))].filter(Boolean).join(" · ") : "No classes returned for this period.";
   const summary = course?.averageSummary || [];
   $("summary-table").hidden = !summary.length;
@@ -195,10 +189,14 @@ function renderDetails() {
     $("average-summary").append(row);
   }
   const terms = course?.terms || [];
-  if (!terms.some((term) => term.oid === selectedTerm)) selectedTerm = "all";
+  if (selectedTerm !== "current" && selectedTerm !== "all" && !terms.some((term) => term.oid === selectedTerm)) {
+    selectedTerm = "all";
+  }
   const all = element("option", "All terms");
   all.value = "all";
-  $("term-select").replaceChildren(all);
+  const current = element("option", "Current term");
+  current.value = "current";
+  $("term-select").replaceChildren(all, current);
   for (const term of terms) {
     const option = element("option", term.gradeTermId);
     option.value = term.oid;
@@ -210,8 +208,9 @@ function renderDetails() {
 
 function renderAssignments() {
   const search = $("assignment-search").value.trim().toLowerCase();
+  const currentTerm = currentTermOid();
   const assignments = (selectedCourse()?.assignments || []).filter((item) =>
-    (selectedTerm === "all" || item.termOid === selectedTerm) &&
+    (selectedTerm === "all" || (selectedTerm === "current" ? item.termOid === currentTerm : item.termOid === selectedTerm)) &&
     `${item.name || ""} ${item.categoryName || ""}`.toLowerCase().includes(search))
     .sort((a, b) => dateValue(b.dueDate) - dateValue(a.dueDate));
   $("assignment-count").textContent = `${assignments.length} assignment${assignments.length === 1 ? "" : "s"}.`;
@@ -241,5 +240,11 @@ function renderAssignments() {
     row.append(cell);
     $("assignments").append(row);
   }
+}
+
+function currentTermOid(snapshot = detailSnapshot()) {
+  const filters = gradePeriod(snapshot);
+  if (filters.currentTermOid) return filters.currentTermOid;
+  return filters.quarter && !["current", "all"].includes(filters.quarter) ? filters.quarter : "";
 }
 

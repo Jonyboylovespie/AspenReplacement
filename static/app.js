@@ -361,9 +361,6 @@ function startDashboard() {
   }
   $("demo").addEventListener("click", loadDemo);
   $("empty-demo").addEventListener("click", loadDemo);
-  $("class-select").addEventListener("change", () => {
-    location.hash = classHref({studentScheduleOid: $("class-select").value}, isCurrentClassRoute());
-  });
   $("term-select").addEventListener("change", () => { selectedTerm = $("term-select").value; renderAssignments(); });
   $("grade-year").addEventListener("change", () => changeGradePeriod(true));
   $("grade-quarter").addEventListener("change", () => changeGradePeriod(false));

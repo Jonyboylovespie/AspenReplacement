@@ -544,7 +544,13 @@ def cache_grade_periods(load_period, year="current", quarter="current"):
     if len(current_matches) == 1:
         active_key = current_matches[0]
         active = periods[active_key]
-        current_filters = {**baseline["gradeFilters"], "quarter": "current"}
+        active_term_oid = active_key.split(":", 1)[1]
+        # Keep the resolved active term available to assignment filters even
+        # when the user is viewing another cached quarter.
+        for key, period in periods.items():
+            if key.startswith("current:"):
+                period["gradeFilters"] = {**period["gradeFilters"], "currentTermOid": active_term_oid}
+        current_filters = {**baseline["gradeFilters"], "quarter": "current", "currentTermOid": active_term_oid}
         periods["current:current"] = {**active, "gradeFilters": current_filters}
         baseline = {**baseline, **periods["current:current"]}
     if year == "previous" and quarter == "current":
@@ -848,8 +854,11 @@ def demo_period(year="current", quarter="current"):
                 course = {"courseName": subjects[period - 1][0], "teacherName": subjects[period - 1][1],
                           "room": f"Room {100 + period}", "department": DEMO_DEPARTMENTS[period - 1]}
                 demo_schedule[letter][block * 2:block * 2 + 2] = [course, course]
+    filters = {"year": year, "quarter": quarter, "years": years, "quarters": quarters}
+    if year == "current":
+        filters["currentTermOid"] = "demo-q1"
     return {"mode": "demo", "student": {"name": "Alex Morgan", "studentOid": "demo"},
-            "gradeFilters": {"year": year, "quarter": quarter, "years": years, "quarters": quarters},
+            "gradeFilters": filters,
             "syncedAt": datetime.now(timezone.utc).isoformat(), "warnings": ["Sample data, not your Aspen grades."],
             "attendance": {"available": True, "scope": "Current school year", "partial": False,
                            "summary": "Absences: 1.0. Tardies: 1 (0 unexcused).",

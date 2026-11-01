@@ -752,18 +752,6 @@ body[data-mode='dark'] .schedule-lunch strong { color: #f6c453; }
   line-height: 1;
 }
 
-.detail-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-  font-size: 0.74rem;
-}
-
-.detail-controls select {
-  max-width: 350px;
-}
-
 .summary-panel {
   margin-bottom: 24px;
 }
@@ -1814,16 +1802,6 @@ body[data-mode='dark'] .course-card {
 
   .detail-grade strong {
     font-size: 2.2rem;
-  }
-
-  .detail-controls {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .detail-controls select {
-    width: 100%;
-    max-width: none;
   }
 
   .empty-welcome {
