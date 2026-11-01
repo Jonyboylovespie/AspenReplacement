@@ -265,8 +265,6 @@ function route(focus = false, animate = true) {
       if (selectedClass !== id || selectedClassPeriod !== period) {
         selectedClass = id;
         selectedClassPeriod = period;
-        const quarter = filters.quarter;
-        selectedTerm = ["current", "all"].includes(quarter) ? "all" : quarter;
         $("assignment-search").value = "";
       }
       renderDetails();

@@ -154,11 +154,16 @@ test("home stays current through grade changes, polling, reload, and class navig
   location.hash = nodes.get("home-classes").children[0].href;
   context.route();
   assert.equal(nodes.get("course-grade").textContent, "95 A");
-  assert.equal(nodes.get("term-select").value, "all");
+  assert.equal(nodes.get("term-select").value, "q2");
   assert.deepEqual(nodes.get("term-select").children.slice(0, 2).map(option => [option.textContent, option.value]),
     [["All terms", "all"], ["Current term", "current"]]);
   vm.runInContext('selectedTerm = "current"; renderAssignments();', context);
   assert.equal(nodes.get("assignment-count").textContent, "1 assignment.");
+  location.hash = "#grades";
+  context.route();
+  location.hash = nodes.get("home-classes").children[0].href;
+  context.route();
+  assert.equal(nodes.get("term-select").value, "current");
   assert.match(nodes.get("course-info").textContent, /Current school year · Current quarter/);
   location.hash = nodes.get("home-classes").children[0].href;
   context.route();
