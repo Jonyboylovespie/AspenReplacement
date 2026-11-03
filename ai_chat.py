@@ -22,7 +22,7 @@ C−: 69.5; D+: 66.5; D: 62.5; D−: 59.5; below 59.5: F. There is no fallback A
 Use the unrounded percentage for cutoffs (92.49 is A−, even if displayed as 92.5%).
 Assignment percentages are earned points / possible points * 100, only with numeric scores and positive possible
 points; extra credit can exceed 100%. Use these cutoffs for hypothetical target
-letters. Only use reported categories when they effect grade calculations, if they don't, don't mention them at all.
+letters. Only use category weights when they effect grade calculations, if they don't, or they aren't provided, calculate all assignments as if category weights don't exist and don't mention them at all.
 Stay focused on school grades, assignments, and attendance.
 Each grade period's fetchedAt is its retrieval time; historical views can be older
 than the current-period sync. Use the relevant period's timestamp when discussing freshness.
