@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 let currentState = null;
 let renderedSnapshot = null;
 let selectedClass = "";
+let selectedClassRecord = null;
 let selectedClassPeriod = "";
 let selectedTerm = "current";
 let busy = false;
@@ -20,6 +21,7 @@ function gradePeriodSnapshot(snapshot) {
   if (owner !== gradePeriodOwner) {
     gradePeriodOwner = owner;
     selectedGradePeriod = null;
+    selectedClassRecord = null;
     try {
       selectedGradePeriod = JSON.parse(localStorage.getItem(gradePeriodStorageKey()));
       if (selectedGradePeriod?.year === "current" && selectedGradePeriod.quarter === "all") {
@@ -274,12 +276,14 @@ function route(focus = false, animate = true) {
     let id = "";
     const prefix = isCurrentClassRoute() ? "class/current/" : "class/";
     try { id = decodeURIComponent(hash.slice(prefix.length)); } catch { /* Invalid links return to the class list. */ }
-    if (detailSnapshot()?.classes?.some(c => c.studentScheduleOid === id)) {
+    if (detailSnapshot()?.classes?.some(c => c.studentScheduleOid === id) ||
+        (selectedClass === id && selectedClassRecord?.studentScheduleOid === id)) {
       const filters = gradePeriod(detailSnapshot());
       const period = `${filters.year}:${filters.quarter}`;
       if (selectedClass !== id || selectedClassPeriod !== period) {
         selectedClass = id;
         selectedClassPeriod = period;
+        selectedClassRecord = detailSnapshot()?.classes?.find(c => c.studentScheduleOid === id) || selectedClassRecord;
         $("assignment-search").value = "";
       }
       renderDetails();

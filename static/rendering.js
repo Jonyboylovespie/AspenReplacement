@@ -162,11 +162,15 @@ function renderClassCards() {
 }
 
 function selectedCourse() {
-  return detailSnapshot()?.classes?.find((course) => course.studentScheduleOid === selectedClass);
+  return detailSnapshot()?.classes?.find((course) => course.studentScheduleOid === selectedClass) ||
+    (selectedClassRecord?.studentScheduleOid === selectedClass ? selectedClassRecord : null);
 }
 
 function renderDetails() {
   const courses = classesWithGradesFirst(detailSnapshot()?.classes || []);
+  if (selectedClassRecord && !courses.some(course => course.studentScheduleOid === selectedClassRecord.studentScheduleOid)) {
+    courses.push(selectedClassRecord);
+  }
   if (!courses.some(course => course.studentScheduleOid === selectedClass)) selectedClass = courses[0]?.studentScheduleOid || "";
   const course = selectedCourse();
   $("details-title").textContent = course?.courseName || "Class breakdown";
