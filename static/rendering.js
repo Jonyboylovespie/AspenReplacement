@@ -188,20 +188,14 @@ function renderDetails() {
     }
     $("average-summary").append(row);
   }
-  const terms = course?.terms || [];
-  if (selectedTerm !== "current" && selectedTerm !== "all" && !terms.some((term) => term.oid === selectedTerm)) {
-    selectedTerm = "all";
-  }
-  const all = element("option", "All terms");
-  all.value = "all";
-  const current = element("option", "Current term");
-  current.value = "current";
-  $("term-select").replaceChildren(all, current);
-  for (const term of terms) {
-    const option = element("option", term.gradeTermId);
-    option.value = term.oid;
-    $("term-select").append(option);
-  }
+  const filters = gradePeriod();
+  const quarters = filters.quarters || [];
+  selectedTerm = filters.quarter;
+  $("term-select").replaceChildren(...quarters.map((quarter) => {
+    const option = element("option", quarter.label);
+    option.value = quarter.value;
+    return option;
+  }));
   $("term-select").value = selectedTerm;
   renderAssignments();
 }

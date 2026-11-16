@@ -5,7 +5,7 @@ let currentState = null;
 let renderedSnapshot = null;
 let selectedClass = "";
 let selectedClassPeriod = "";
-let selectedTerm = "all";
+let selectedTerm = "current";
 let busy = false;
 let feedLimit = 12;
 let selectedGradePeriod = null;
@@ -20,7 +20,14 @@ function gradePeriodSnapshot(snapshot) {
   if (owner !== gradePeriodOwner) {
     gradePeriodOwner = owner;
     selectedGradePeriod = null;
-    try { selectedGradePeriod = JSON.parse(localStorage.getItem(gradePeriodStorageKey())); } catch { /* Use the snapshot's default. */ }
+    try {
+      selectedGradePeriod = JSON.parse(localStorage.getItem(gradePeriodStorageKey()));
+      if (selectedGradePeriod?.year === "current" && selectedGradePeriod.quarter === "all") {
+        selectedGradePeriod = {...selectedGradePeriod, quarter: "current"};
+        localStorage.setItem(gradePeriodStorageKey(), JSON.stringify(selectedGradePeriod));
+      }
+      if (selectedGradePeriod?.quarter) selectedTerm = selectedGradePeriod.quarter;
+    } catch { /* Use the snapshot's default. */ }
   }
   if (!snapshot) return snapshot;
   const requested = selectedGradePeriod || snapshot.gradeFilters;
@@ -28,6 +35,7 @@ function gradePeriodSnapshot(snapshot) {
     snapshot.gradePeriods[`${requested.year}:${requested.year === "previous" ? "all" : "current"}`] ||
     snapshot.gradePeriods["current:current"];
   selectedGradePeriod = {year: period.gradeFilters.year, quarter: period.gradeFilters.quarter};
+  selectedTerm = period.gradeFilters.quarter;
   return {...snapshot, ...period};
 }
 
@@ -58,8 +66,15 @@ function gradePeriodLabel(filters) {
 
 function renderGradeFilters() {
   const filters = gradePeriod();
+  // Current school year defaults to a single active quarter; the previous
+  // school year still needs its aggregate view because Aspen may not expose
+  // an active quarter for historical data.
+  const quarterChoices = filters.year === "current" ?
+    filters.quarters.filter(choice => choice.value !== "all") : filters.quarters;
+  const quarterValue = filters.quarter === "all" ?
+    (quarterChoices.find(choice => choice.value === "current")?.value || quarterChoices[0]?.value || "") : filters.quarter;
   for (const [id, choices, value] of [["grade-year", filters.years, filters.year],
-                                     ["grade-quarter", filters.quarters, filters.quarter]]) {
+                                     ["grade-quarter", quarterChoices, quarterValue]]) {
     $(id).replaceChildren(...choices.map(choice => {
       const option = element("option", choice.label);
       option.value = choice.value;
@@ -106,7 +121,7 @@ function setState(state) {
   $("grade-quarter").disabled = !canChangePeriod;
   const filters = gradePeriod();
   if (previousPeriod.year !== filters.year || previousPeriod.quarter !== filters.quarter) {
-    selectedTerm = ["current", "all"].includes(filters.quarter) ? "all" : filters.quarter;
+    selectedTerm = filters.quarter;
     $("assignment-search").value = "";
   }
   const historical = filters.year !== "current" || !["current", "all"].includes(filters.quarter);
@@ -359,7 +374,10 @@ function startDashboard() {
   }
   $("demo").addEventListener("click", loadDemo);
   $("empty-demo").addEventListener("click", loadDemo);
-  $("term-select").addEventListener("change", () => { selectedTerm = $("term-select").value; renderAssignments(); });
+  $("term-select").addEventListener("change", () => {
+    $("grade-quarter").value = $("term-select").value;
+    changeGradePeriod(false);
+  });
   $("grade-year").addEventListener("change", () => changeGradePeriod(true));
   $("grade-quarter").addEventListener("change", () => changeGradePeriod(false));
   $("assignment-search").addEventListener("input", renderAssignments);

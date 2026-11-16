@@ -127,8 +127,12 @@ test("home stays current through grade changes, polling, reload, and class navig
     activityFeed: {available: true, events: [{type: "grade", studentScheduleOid: "shared-id",
       className: "Current math", assignmentOid: "quiz", assignmentName: "Quiz", grade: "9", date: "2026-10-01"}]},
   }};
+  preferences.set("aspen-grade-period:live:", JSON.stringify({year: "current", quarter: "all"}));
   document.getElementById("feed-type").value = "all";
   context.setState(state);
+  assert.equal(nodes.get("grade-quarter").value, "current");
+  assert.equal(nodes.get("term-select").value, "current");
+  assert.equal(JSON.parse(preferences.get("aspen-grade-period:live:")).quarter, "current");
   function assertCurrentHome() {
     const cards = nodes.get("home-classes").children;
     assert.equal(cards.length, 1);
@@ -156,19 +160,25 @@ test("home stays current through grade changes, polling, reload, and class navig
   assert.equal(nodes.get("course-grade").textContent, "95 A");
   assert.equal(nodes.get("term-select").value, "q2");
   assert.deepEqual(nodes.get("term-select").children.slice(0, 2).map(option => [option.textContent, option.value]),
-    [["All terms", "all"], ["Current term", "current"]]);
+    [["Current quarter", "current"], ["All quarters", "all"]]);
   vm.runInContext('selectedTerm = "current"; renderAssignments();', context);
   assert.equal(nodes.get("assignment-count").textContent, "1 assignment.");
   location.hash = "#grades";
   context.route();
   location.hash = nodes.get("home-classes").children[0].href;
   context.route();
-  assert.equal(nodes.get("term-select").value, "current");
+  assert.equal(nodes.get("term-select").value, "q2");
   assert.match(nodes.get("course-info").textContent, /Current school year · Current quarter/);
   location.hash = nodes.get("home-classes").children[0].href;
   context.route();
   assert.equal(nodes.get("course-grade").textContent, "95 A");
   assert.equal(nodes.get("grade-quarter").value, "q2");
+  vm.runInContext('gradePeriodOwner = ""; selectedGradePeriod = null; renderedSnapshot = null;', context);
+  context.setState(state);
+  location.hash = nodes.get("classes").children[0].href;
+  context.route();
+  assert.equal(nodes.get("grade-quarter").value, "q2");
+  assert.equal(nodes.get("term-select").value, "q2");
 
   location.hash = "#grades";
   nodes.get("grade-year").value = "previous";
