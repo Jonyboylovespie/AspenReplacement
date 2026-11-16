@@ -119,11 +119,13 @@ test("home stays current through grade changes, polling, reload, and class navig
   }
   const current = period("current", "current", "Current math", "95", 10);
   current.gradeFilters.currentTermOid = "q2";
+  const allQuarter = period("current", "all", "Current math", "95", 10);
+  allQuarter.classes[0].assignments.push({oid: "old-quiz", name: "Old quiz", totalPoints: 10, termOid: "q1"});
   const otherQuarter = period("current", "q2", "Current math", "70", 20);
   const previous = period("previous", "all", "Previous math", "80", 30);
   previous.classes.push({studentScheduleOid: "old-only", courseName: "Old class", displayGrade: "85"});
   const state = {signedIn: true, snapshot: {mode: "live", syncedAt: "saved", ...current,
-    gradePeriods: {"current:current": current, "current:q2": otherQuarter, "previous:all": previous},
+    gradePeriods: {"current:current": current, "current:all": allQuarter, "current:q2": otherQuarter, "previous:all": previous},
     activityFeed: {available: true, events: [{type: "grade", studentScheduleOid: "shared-id",
       className: "Current math", assignmentOid: "quiz", assignmentName: "Quiz", grade: "9", date: "2026-10-01"}]},
   }};
@@ -179,6 +181,13 @@ test("home stays current through grade changes, polling, reload, and class navig
   context.route();
   assert.equal(nodes.get("grade-quarter").value, "q2");
   assert.equal(nodes.get("term-select").value, "q2");
+
+  nodes.get("grade-quarter").value = "all";
+  context.changeGradePeriod(false);
+  location.hash = nodes.get("home-classes").children[0].href;
+  context.route();
+  assert.equal(nodes.get("term-select").value, "all");
+  assert.equal(nodes.get("assignment-count").textContent, "2 assignments.");
 
   location.hash = "#grades";
   nodes.get("grade-year").value = "previous";

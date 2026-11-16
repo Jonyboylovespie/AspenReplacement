@@ -49,7 +49,16 @@ function gradePeriod(snapshot = currentState?.snapshot) {
 
 function currentPeriodSnapshot(snapshot = currentState?.snapshot) {
   if (!snapshot) return snapshot;
-  return {...snapshot, ...snapshot.gradePeriods["current:current"]};
+  const current = snapshot.gradePeriods["current:current"];
+  if (gradePeriod(snapshot).quarter !== "all" || !snapshot.gradePeriods["current:all"]) {
+    return {...snapshot, ...current};
+  }
+  const all = snapshot.gradePeriods["current:all"];
+  const allById = new Map((all.classes || []).map(course => [course.studentScheduleOid, course]));
+  return {...snapshot, ...current, classes: (current.classes || []).map(course => {
+    const allCourse = allById.get(course.studentScheduleOid);
+    return allCourse ? {...course, assignments: allCourse.assignments, terms: allCourse.terms} : course;
+  })};
 }
 
 function isCurrentClassRoute() {
